@@ -1,6 +1,6 @@
-package com.fasoo.cs_doc.Member.repository;
+package com.fasoo.cs_doc.member.repository;
 
-import com.fasoo.cs_doc.Member.domain.Member;
+import com.fasoo.cs_doc.member.domain.Member;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

@@ -1,4 +1,4 @@
-package com.fasoo.cs_doc.Member.domain;
+package com.fasoo.cs_doc.member.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
