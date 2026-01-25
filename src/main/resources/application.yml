@@ -1,0 +1,11 @@
+spring:
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        ddl-auto: validate
+        format_sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: debug

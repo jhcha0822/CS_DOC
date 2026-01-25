@@ -25,16 +25,25 @@ repositories {
 }
 
 dependencies {
+    // Web / JPA
+    implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // DB
+    runtimeOnly 'com.mysql:mysql-connector-j'
+    implementation 'com.h2database:h2'
+    // runtimeOnly 'com.h2database:h2'
+
+    // Lombok
     compileOnly 'org.projectlombok:lombok'
-    developmentOnly 'org.springframework.boot:spring-boot-devtools'
     annotationProcessor 'org.projectlombok:lombok'
-    testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Dev
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+    // Test
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 
 tasks.named('test') {
