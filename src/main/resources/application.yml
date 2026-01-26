@@ -9,3 +9,7 @@ spring:
 logging:
   level:
     org.hibernate.SQL: debug
+
+  app:
+    storage:
+      md-root: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\md

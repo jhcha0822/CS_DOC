@@ -17,3 +17,11 @@ spring:
     console:
       enabled: true
       path: /h2-console
+
+app:
+  storage:
+    md-root: C:/Users/Kingdomcome/Documents/CS_DOC_DATA/md
+
+logging:
+  level:
+    org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping: TRACE
