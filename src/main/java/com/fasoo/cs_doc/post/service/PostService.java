@@ -25,8 +25,15 @@ public class PostService {
 
     // ✅ 목록 조회 (pagination)
     @Transactional(readOnly = true)
-    public PageResponse<PostListItemResponse> list(Pageable pageable) {
-        Page<Post> page = postRepository.findAll(pageable);
+    public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword) {
+
+        Page<Post> page;
+        if (keyword == null || keyword.isBlank()) {
+            page = postRepository.findAll(pageable);
+        } else {
+            String k = keyword.trim();
+            page = postRepository.findByTitleContainingIgnoreCase(k, pageable);
+        }
 
         List<PostListItemResponse> items = page.getContent().stream()
                 .map(p -> new PostListItemResponse(

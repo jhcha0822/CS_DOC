@@ -36,9 +36,10 @@ public class PostController {
 
     @GetMapping
     public PageResponse<PostListItemResponse> list(
+            @RequestParam(required = false) String keyword,
             @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable
     ) {
-        return postService.list(pageable);
+        return postService.list(pageable, keyword);
     }
 }
