@@ -5,10 +5,10 @@ import com.fasoo.cs_doc.global.page.PageResponse;
 import com.fasoo.cs_doc.post.domain.Post;
 import com.fasoo.cs_doc.post.dto.*;
 import com.fasoo.cs_doc.post.repository.PostRepository;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.data.domain.Page;
 
 import java.util.List;
 
@@ -23,9 +23,9 @@ public class PostService {
         this.storage = storage;
     }
 
-    // ✅ 추가: 목록 조회 (pagination)
+    // ✅ 목록 조회 (pagination)
     @Transactional(readOnly = true)
-    public PageResponse list(Pageable pageable) {
+    public PageResponse<PostListItemResponse> list(Pageable pageable) {
         Page<Post> page = postRepository.findAll(pageable);
 
         List<PostListItemResponse> items = page.getContent().stream()
@@ -40,24 +40,24 @@ public class PostService {
 
         return PageResponse.of(
                 items,
-                page.getNumber(),          // 현재 페이지 (0-based)
-                page.getSize(),            // 페이지 사이즈
-                page.getTotalElements(),   // 전체 개수
-                page.getTotalPages(),      // 전체 페이지 수
-                page.hasNext(),            // 다음 페이지 존재 여부
-                page.hasPrevious()         // 이전 페이지 존재 여부
+                page.getNumber(),
+                page.getSize(),
+                page.getTotalElements(),
+                page.getTotalPages(),
+                page.hasNext(),
+                page.hasPrevious()
         );
     }
 
     @Transactional
     public PostResponse create(PostCreateRequest req) {
-        // 1) 먼저 엔티티 생성(임시 mdPath로 넣었다가)
-        Post post = new Post(req.title(), "TEMP");
-        Post saved = postRepository.save(post);
+        // 1) 먼저 DB row 생성 (contentMdPath는 null로 두고 id부터 확보)
+        Post post = new Post(req.title(), null);
+        Post saved = postRepository.save(post); // saved는 영속 상태
 
         // 2) 파일 저장 후 mdPath 확정
         String mdPath = storage.saveNew(req.contentMd(), saved.getId());
-        saved.changeContentMdPath(mdPath);
+        saved.changeContentMdPath(mdPath); // dirty checking으로 반영됨
 
         return toResponse(saved);
     }
@@ -67,11 +67,17 @@ public class PostService {
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Post not found: " + id));
 
-        String md = storage.read(post.getContentMdPath());
+        String mdPath = post.getContentMdPath();
+        if (mdPath == null) {
+            // 정상 플로우라면 여기 오면 안 됨. 데이터 깨짐 감지용.
+            throw new IllegalStateException("Post contentMdPath is null: " + id);
+        }
+
+        String md = storage.read(mdPath);
         return new PostDetailResponse(
                 post.getId(),
                 post.getTitle(),
-                post.getContentMdPath(),
+                mdPath,
                 md,
                 post.getCreatedAt(),
                 post.getUpdatedAt()
@@ -83,8 +89,13 @@ public class PostService {
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Post not found: " + id));
 
+        String mdPath = post.getContentMdPath();
+        if (mdPath == null) {
+            throw new IllegalStateException("Post contentMdPath is null: " + id);
+        }
+
         post.changeTitle(req.title());
-        storage.overwrite(post.getContentMdPath(), req.contentMd());
+        storage.overwrite(mdPath, req.contentMd());
 
         return toResponse(post);
     }
