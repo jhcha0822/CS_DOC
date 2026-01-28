@@ -1,13 +1,19 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    # url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:file:./CS_DOC_DATA/h2/csdoc;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
     username: sa
     password:
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 2MB
+      max-request-size: 2MB
 
   jpa:
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: update
     properties:
       hibernate:
         format_sql: true
@@ -21,6 +27,15 @@ spring:
 app:
   storage:
     md-root: C:/Users/Kingdomcome/Documents/CS_DOC_DATA/md
+
+springdoc:
+  swagger-ui:
+    path: /swagger
+    operationsSorter: method
+    tagsSorter: alpha
+    display-request-duration: true
+  api-docs:
+    path: /v3/api-docs
 
 logging:
   level:

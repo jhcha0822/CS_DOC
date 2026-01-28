@@ -5,7 +5,6 @@ import java.time.LocalDateTime;
 public record PostListItemResponse(
         Long id,
         String title,
-        String contentMdPath,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {}
