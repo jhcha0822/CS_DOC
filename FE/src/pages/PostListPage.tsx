@@ -1,123 +1,145 @@
-import { useEffect, useRef, useState } from "react";
-import { createSearchParams, Link, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, createSearchParams, useSearchParams } from "react-router-dom";
+import { fetchPosts, type PostListItem } from "../lib/api";
 import {
     DEFAULT_CATEGORY,
+    getApiCategoriesByKey,
     isCategoryKey,
-    labelOf,
-    toFilterKeys,
-    toApiCategories,
+    labelOfApiCategory,
     type CategoryKey,
 } from "../lib/categories";
+
+function formatKST(iso: string) {
+    // ISO -> "YYYY.MM.DD HH:mm"
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(
+        d.getHours()
+    )}:${pad(d.getMinutes())}`;
+}
 
 export default function PostListPage() {
     const [sp, setSp] = useSearchParams();
 
-    const category: CategoryKey = (() => {
-        const v = sp.get("category");
-        return isCategoryKey(v) ? v : DEFAULT_CATEGORY;
-    })();
+    const categoryParam = sp.get("category");
+    const currentKey: CategoryKey = isCategoryKey(categoryParam)
+        ? categoryParam
+        : DEFAULT_CATEGORY;
 
-    // URL의 q는 "현재 검색 확정값"
-    const qFromUrl = sp.get("q") ?? "";
+    const [q, setQ] = useState(sp.get("q") ?? "");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [items, setItems] = useState<PostListItem[]>([]);
 
-    // input은 로컬 state(IME 안전)
-    const [q, setQ] = useState<string>(qFromUrl);
+    // 현재 선택 카테고리가 의미하는 BE 카테고리들
+    const allowedApiCats = useMemo(() => getApiCategoriesByKey(currentKey), [currentKey]);
 
-    // 뒤로가기/사이드바 이동 등으로 URL이 바뀌면 input도 동기화
     useEffect(() => {
-        setQ(qFromUrl);
-    }, [qFromUrl]);
+        let cancelled = false;
 
-    // IME 조합중인지 플래그
-    const composingRef = useRef(false);
+        async function run() {
+            setLoading(true);
+            setError(null);
 
-    const filterKeys = toFilterKeys(category);
-    const apiCategories = toApiCategories(category);
+            try {
+                // 1) 서버에 categories를 보내서 "지원하면" 필터링
+                // 2) 서버가 무시해도 아래에서 FE에서 다시 필터링
+                const data = await fetchPosts({
+                    categories: allowedApiCats,
+                    q: (sp.get("q") ?? "").trim() || undefined,
+                });
 
-    // ✅ "검색 확정" 함수: 버튼/Enter에서만 호출
-    const commitSearch = () => {
+                if (cancelled) return;
+
+                // 안전장치: 서버가 전체를 내려줘도 FE에서 확실히 필터링
+                const filtered = (data.items ?? []).filter((it) =>
+                    allowedApiCats.includes(it.category)
+                );
+
+                setItems(filtered);
+            } catch (e: any) {
+                if (cancelled) return;
+                setError(e?.message || "목록을 불러오지 못했습니다.");
+                setItems([]);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        }
+
+        run();
+        return () => {
+            cancelled = true;
+        };
+    }, [allowedApiCats, sp]);
+
+    const title = useMemo(() => {
+        switch (currentKey) {
+            case "training":
+                return "실습";
+            case "incident":
+                return "장애 지원";
+            case "system":
+                return "업무시스템";
+            case "newbie":
+            default:
+                return "신입 교육 자료";
+        }
+    }, [currentKey]);
+
+    const onSearch = () => {
         const next = new URLSearchParams(sp);
-
-        // category는 항상 유지(안전)
-        next.set("category", category);
-
-        const trimmed = q.trim();
-        if (trimmed) next.set("q", trimmed);
+        if (q.trim()) next.set("q", q.trim());
         else next.delete("q");
-
-        // (선택) 검색 확정 시 페이지 리셋이 필요하면:
-        // next.delete("page");
-
+        // category는 유지
         setSp(next, { replace: true });
     };
 
-    const clearSearch = () => {
+    const onReset = () => {
         setQ("");
         const next = new URLSearchParams(sp);
-        next.set("category", category);
         next.delete("q");
-        // next.delete("page");
         setSp(next, { replace: true });
     };
-
-    // ✅ 상세로 갈 때 "현재 목록 상태(querystring)" 그대로 전달
-    //    (category/q/page 등 포함)
-    const listQueryString = sp.toString(); // e.g. "category=system&q=테스"
 
     return (
         <div>
-            <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between" }}>
+            {/* 상단 헤더 */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end" }}>
                 <div>
-                    <div style={{ fontSize: 22, fontWeight: 800 }}>{labelOf(category)}</div>
-                    <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>
-                        category=<b>{category}</b> / filterKeys=<b>{filterKeys.join(", ")}</b> / apiCategories=
-                        <b>{apiCategories.join(", ")}</b>
-                        {qFromUrl ? (
-                            <>
-                                {" "}
-                                / q=<b>{qFromUrl}</b>
-                            </>
-                        ) : null}
-                    </div>
+                    <div style={{ fontSize: 26, fontWeight: 900 }}>{title}</div>
                 </div>
 
                 <Link
-                    // 새 글 작성 후 목록 복귀도 고려하면 category만 유지(원하면 q도 유지 가능)
-                    to={`/posts/new?${createSearchParams({ category }).toString()}`}
+                    to={`/posts/new?${createSearchParams({ category: currentKey }).toString()}`}
                     style={{
-                        padding: "10px 12px",
+                        padding: "10px 14px",
                         borderRadius: 10,
                         border: "1px solid #2a2a2a",
                         textDecoration: "none",
                         color: "#eaeaea",
                         background: "#1e1e1e",
-                        fontWeight: 700,
+                        fontWeight: 800,
                     }}
                 >
                     + 새 글
                 </Link>
             </div>
 
-            {/* ✅ Enter로 검색되게 하려면 form(onSubmit) 쓰는 게 제일 깔끔 */}
-            <form
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    if (composingRef.current) return; // IME 조합 중 Enter는 무시
-                    commitSearch();
+            {/* 검색 */}
+            <div
+                style={{
+                    marginTop: 14,
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
                 }}
-                style={{ marginTop: 16, display: "flex", gap: 8 }}
             >
                 <input
                     value={q}
-                    onCompositionStart={() => {
-                        composingRef.current = true;
-                    }}
-                    onCompositionEnd={() => {
-                        // 조합 종료
-                        composingRef.current = false;
-                    }}
-                    onChange={(e) => {
-                        setQ(e.target.value);
+                    onChange={(e) => setQ(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") onSearch();
                     }}
                     placeholder="검색어"
                     style={{
@@ -125,75 +147,109 @@ export default function PostListPage() {
                         padding: "10px 12px",
                         borderRadius: 10,
                         border: "1px solid #2a2a2a",
-                        background: "#121212",
+                        background: "#0f0f0f",
                         color: "#eaeaea",
+                        outline: "none",
                     }}
                 />
-
                 <button
-                    type="submit"
+                    onClick={onSearch}
                     style={{
                         padding: "10px 12px",
                         borderRadius: 10,
                         border: "1px solid #2a2a2a",
-                        background: "#1e1e1e",
-                        color: "#eaeaea",
+                        background: "#eaeaea",
+                        color: "#111",
                         fontWeight: 800,
                         cursor: "pointer",
                     }}
                 >
                     검색
                 </button>
-
                 <button
-                    type="button"
-                    onClick={clearSearch}
+                    onClick={onReset}
                     style={{
                         padding: "10px 12px",
                         borderRadius: 10,
                         border: "1px solid #2a2a2a",
-                        background: "transparent",
-                        color: "#eaeaea",
+                        background: "#eaeaea",
+                        color: "#111",
+                        fontWeight: 800,
                         cursor: "pointer",
                     }}
                 >
                     초기화
                 </button>
-            </form>
+            </div>
 
-            <div style={{ marginTop: 18, borderTop: "1px solid #2a2a2a", paddingTop: 14 }}>
-                <div style={{ opacity: 0.75, fontSize: 13, marginBottom: 8 }}>
-                    (다음 단계에서 BE /api/posts 연결: categories={apiCategories.join(",")})
-                </div>
+            {/* 상태 표시 */}
+            {loading && (
+                <div style={{ marginTop: 14, opacity: 0.8 }}>불러오는 중...</div>
+            )}
+            {error && (
+                <div style={{ marginTop: 14, color: "#ff6b6b", fontWeight: 700 }}>{error}</div>
+            )}
 
-                {/* 임시 더미 */}
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
-                    {[1, 2, 3].map((id) => (
-                        <li
-                            key={id}
+            {/* 목록 */}
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                {!loading && !error && items.length === 0 && (
+                    <div style={{ opacity: 0.8, marginTop: 8 }}>게시글이 없습니다.</div>
+                )}
+
+                {items.map((post) => {
+                    const detailUrl = `/posts/${post.id}?${createSearchParams({
+                        category: currentKey,
+                    }).toString()}`;
+
+                    return (
+                        <div
+                            key={post.id}
                             style={{
-                                padding: 14,
                                 border: "1px solid #2a2a2a",
-                                borderRadius: 12,
-                                background: "#121212",
+                                borderRadius: 14,
+                                background: "#101010",
+                                padding: 14,
                             }}
                         >
-                            <div style={{ fontWeight: 800 }}>테스트 글 #{id}</div>
-                            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-                                newbie 클릭 시 하위(실습/장애/업무시스템) 전체가 포함되는 구조
+                            <div
+                                style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    gap: 16,
+                                    alignItems: "start",
+                                }}
+                            >
+                                <div style={{ minWidth: 0 }}>
+                                    {/* 제목 = 상세 링크 */}
+                                    <Link
+                                        to={detailUrl}
+                                        style={{
+                                            display: "inline-block",
+                                            fontSize: 18,
+                                            fontWeight: 900,
+                                            color: "#eaeaea",
+                                            textDecoration: "none",
+                                            lineHeight: 1.3,
+                                            wordBreak: "break-word",
+                                        }}
+                                    >
+                                        {post.title}
+                                    </Link>
+
+                                    {/* 카테고리 한글명만 표시 (본문/미리보기는 아예 제거) */}
+                                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+                                        {labelOfApiCategory(post.category)}
+                                    </div>
+                                </div>
+
+                                {/* 수정일 오른쪽 정렬 */}
+                                <div style={{ fontSize: 12, opacity: 0.8, whiteSpace: "nowrap" }}>
+                                    {formatKST(post.updatedAt)}
+                                </div>
                             </div>
-                            <div style={{ marginTop: 10 }}>
-                                <Link
-                                    // ✅ 여기서 기존 category/q 유지가 핵심!
-                                    to={`/posts/${id}?${listQueryString}`}
-                                    style={{ color: "#9bdcff", textDecoration: "none", fontWeight: 700 }}
-                                >
-                                    상세 보기 →
-                                </Link>
-                            </div>
-                        </li>
-                    ))}
-                </ul>
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

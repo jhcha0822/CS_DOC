@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
-import AppLayout from "../layouts/AppLayout";
+import AppLayout from "../layouts/AppLayout.tsx";
 import LoginPage from "../pages/LoginPage";
 import PostListPage from "../pages/PostListPage";
 import PostDetailPage from "../pages/PostDetailPage";

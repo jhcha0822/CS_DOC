@@ -68,8 +68,8 @@ public class PostController {
             @RequestParam(required = false) String keyword,
 
             @Parameter(
-                    description = "Category filters (repeatable). e.g. categories=PRACTICE&categories=SYSTEM. If omitted, all categories.",
-                    example = "PRACTICE"
+                    description = "Category filters (repeatable). e.g. categories=TRAINING&categories=SYSTEM. If omitted, all categories.",
+                    example = "TRAINING"
             )
             @RequestParam(required = false) List<String> categories,
 

@@ -29,7 +29,7 @@ public class PostService {
 
     private PostListItemResponse toListItem(Post p) {
         // ✅ category null 방어(네가 적용한 방향 유지)
-        PostCategory category = (p.getCategory() == null) ? PostCategory.PRACTICE : p.getCategory();
+        PostCategory category = (p.getCategory() == null) ? PostCategory.TRAINING : p.getCategory();
 
         return new PostListItemResponse(
                 p.getId(),
@@ -101,7 +101,7 @@ public class PostService {
 
     @Transactional
     public PostResponse create(PostCreateRequest req) {
-        // 🚨 여기서 new Post(req.title(), PostCategory.PRACTICE) 하면 타입 오류남.
+        // 🚨 여기서 new Post(req.title(), PostCategory.TRAINING) 하면 타입 오류남.
         // Post 생성자 2번째는 String(contentMdPath)로 쓰는 구조이기 때문.
         Post saved = postRepository.save(new Post(req.title(), null)); // ✅ 원복/정답
 

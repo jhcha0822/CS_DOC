@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(
-        name = "posts",
+        name = "post",
         indexes = {
                 @Index(name = "idx_posts_created_at", columnList = "createdAt")
         }
@@ -33,10 +33,10 @@ public class Post {
     @Column(nullable = false, length = 32)
     private PostCategory category;
 
-    @Column(nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(nullable = false)
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
     protected Post() {}

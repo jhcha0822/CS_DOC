@@ -1,10 +1,17 @@
 import { createSearchParams, NavLink, useSearchParams } from "react-router-dom";
-import { DEFAULT_CATEGORY, isCategoryKey, NAV_ITEMS, type CategoryKey } from "../lib/categories";
+import {
+    DEFAULT_CATEGORY,
+    isCategoryKey,
+    NAV_ITEMS,
+    type CategoryKey,
+} from "../lib/categories";
 
 export default function SideNav() {
     const [sp] = useSearchParams();
     const categoryParam = sp.get("category");
-    const current: CategoryKey = isCategoryKey(categoryParam) ? categoryParam : DEFAULT_CATEGORY;
+    const current: CategoryKey = isCategoryKey(categoryParam)
+        ? categoryParam
+        : DEFAULT_CATEGORY;
 
     return (
         <div>
@@ -29,8 +36,8 @@ export default function SideNav() {
                 >
                     {item.label}
                 </NavLink>
-
             ))}
+
             <div style={{ height: 16 }} />
 
             <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>
@@ -70,7 +77,5 @@ export default function SideNav() {
                 H2 Console
             </a>
         </div>
-
     );
 }
-

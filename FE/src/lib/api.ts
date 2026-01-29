@@ -1,40 +1,79 @@
-// src/lib/api.ts
-export const API_BASE = "http://localhost:8080";
+import type { ApiCategory } from "./categories";
 
-export type PageResponse<T> = {
-    items: T[];
-    page: number;
-    size: number;
-    totalElements: number;
-    totalPages: number;
-    hasNext: boolean;
-    hasPrevious: boolean;
-};
+const API_BASE =
+    (import.meta as any).env?.VITE_API_BASE?.toString?.() || "http://localhost:8080";
 
 export type PostListItem = {
     id: number;
     title: string;
-    category: "PRACTICE" | "INCIDENT" | "SYSTEM";
+    category: ApiCategory;
     createdAt: string;
     updatedAt: string;
 };
 
-export async function fetchPosts(params: {
-    categories: string[];
-    keyword?: string;
-    page?: number;
-    size?: number;
-}): Promise<PageResponse<PostListItem>> {
-    const url = new URL(`${API_BASE}/api/posts`);
-    params.categories.forEach((c) => url.searchParams.append("categories", c));
-    if (params.keyword) url.searchParams.set("keyword", params.keyword);
-    if (params.page != null) url.searchParams.set("page", String(params.page));
-    if (params.size != null) url.searchParams.set("size", String(params.size));
+export type PostListResponse = {
+    items: PostListItem[];
+};
 
-    const res = await fetch(url.toString());
+export type PostDetail = {
+    id: number;
+    title: string;
+    category: ApiCategory;
+    createdAt: string;
+    updatedAt: string;
+};
+
+/**
+ * JSON이 아닌 HTML(예: 에러 페이지)로 오는 경우를 잡아내기 위한 공통 fetch
+ */
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+    const res = await fetch(url, init);
+
+    const contentType = res.headers.get("content-type") || "";
+    const isJson = contentType.includes("application/json");
+
     if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`API error ${res.status}: ${text}`);
+        const text = await res.text().catch(() => "");
+        throw new Error(
+            `HTTP ${res.status} ${res.statusText} - ${text?.slice(0, 200) || "no body"}`
+        );
     }
-    return res.json();
+
+    if (!isJson) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`Unexpected response (not JSON): ${text?.slice(0, 200) || ""}`);
+    }
+
+    return (await res.json()) as T;
+}
+
+/**
+ * 목록 조회
+ * - categories를 넘겨도 되고(서버가 지원하면 필터링)
+ * - 서버가 무시해도 FE에서 한 번 더 필터링할 거라 안전
+ */
+export async function fetchPosts(params?: {
+    categories?: ApiCategory[];
+    q?: string;
+}): Promise<PostListResponse> {
+    const url = new URL("/api/posts", API_BASE);
+
+    if (params?.categories?.length) {
+        // 서버가 categories=SYSTEM&categories=INCIDENT 형태를 받을 수도 있어서 반복 파라미터로 보냄
+        params.categories.forEach((c) => url.searchParams.append("categories", c));
+    }
+
+    if (params?.q?.trim()) {
+        url.searchParams.set("q", params.q.trim());
+    }
+
+    return fetchJson<PostListResponse>(url.toString());
+}
+
+/**
+ * 단건 조회
+ */
+export async function fetchPost(id: number): Promise<PostDetail> {
+    const url = new URL(`/api/posts/${id}`, API_BASE);
+    return fetchJson<PostDetail>(url.toString());
 }
