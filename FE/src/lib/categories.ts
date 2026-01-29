@@ -1,32 +1,57 @@
-export const CATEGORY_TREE = {
-    key: "newbie",
-    label: "신인 교육 자료",
-    children: [
-        { key: "practice", label: "실습" },
-        { key: "incident", label: "장애 지원" },
-        { key: "system", label: "업무시스템" },
-    ],
-} as const;
+// src/lib/categories.ts
 
-export type CategoryKey =
-    | typeof CATEGORY_TREE["key"]
-    | (typeof CATEGORY_TREE["children"])[number]["key"];
+/** UI에서 쓰는 카테고리 키 (query param 기준) */
+export type CategoryKey = "newbie" | "practice" | "incident" | "system";
+
+/** BE(PostCategory) enum 문자열 */
+export type ApiCategory = "PRACTICE" | "INCIDENT" | "SYSTEM";
 
 export const DEFAULT_CATEGORY: CategoryKey = "newbie";
 
-export function isCategoryKey(v: string | null | undefined): v is CategoryKey {
-    if (!v) return false;
-    if (v === CATEGORY_TREE.key) return true;
-    return CATEGORY_TREE.children.some((c) => c.key === v);
+const META: Record<CategoryKey, { label: string; children?: CategoryKey[] }> = {
+    newbie: { label: "신인 교육 자료", children: ["practice", "incident", "system"] },
+    practice: { label: "실습" },
+    incident: { label: "장애 지원" },
+    system: { label: "업무시스템" },
+};
+
+const UI_TO_API: Record<Exclude<CategoryKey, "newbie">, ApiCategory> = {
+    practice: "PRACTICE",
+    incident: "INCIDENT",
+    system: "SYSTEM",
+};
+
+/** SideNav에서 쓰는 메뉴 */
+export const NAV_ITEMS: Array<{ key: CategoryKey; label: string }> = [
+    { key: "newbie", label: META.newbie.label },
+    { key: "practice", label: META.practice.label },
+    { key: "incident", label: META.incident.label },
+    { key: "system", label: META.system.label },
+];
+
+export function isCategoryKey(v: unknown): v is CategoryKey {
+    return v === "newbie" || v === "practice" || v === "incident" || v === "system";
 }
 
-// ✅ 핵심: 상위를 누르면 하위 전체를 의미하므로 "선택된 카테고리"를 실제 필터 키 배열로 변환
-export function toFilterKeys(category: CategoryKey): string[] {
-    if (category === CATEGORY_TREE.key) return CATEGORY_TREE.children.map((c) => c.key);
-    return [category];
+export function labelOf(key: CategoryKey): string {
+    return META[key].label;
 }
 
-export function labelOf(category: CategoryKey): string {
-    if (category === CATEGORY_TREE.key) return CATEGORY_TREE.label;
-    return CATEGORY_TREE.children.find((c) => c.key === category)?.label ?? category;
+/**
+ * UI 선택값을 "하위 포함" UI 키로 확장
+ * - newbie -> [practice, incident, system]
+ * - practice -> [practice]
+ */
+export function toFilterKeys(key: CategoryKey): CategoryKey[] {
+    return META[key].children ?? [key];
+}
+
+/**
+ * ✅ UI 선택값을 BE 필터용 enum 배열로 변환
+ * - newbie -> [PRACTICE, INCIDENT, SYSTEM]
+ * - practice -> [PRACTICE]
+ */
+export function toApiCategories(key: CategoryKey): ApiCategory[] {
+    const keys = toFilterKeys(key).filter((k): k is Exclude<CategoryKey, "newbie"> => k !== "newbie");
+    return keys.map((k) => UI_TO_API[k]);
 }

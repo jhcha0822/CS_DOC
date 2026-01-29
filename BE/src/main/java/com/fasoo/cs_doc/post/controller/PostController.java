@@ -16,6 +16,9 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
+@CrossOrigin(origins = "http://localhost:5173")
 @Tag(name = "Posts", description = "Posts CRUD and markdown content APIs")
 @RestController
 @RequestMapping("/api/posts")
@@ -38,7 +41,7 @@ public class PostController {
 
     @Operation(
             summary = "Get post detail",
-            description = "Get post metadata (without markdown content). Use /{id}/content to fetch markdown."
+            description = "Get post detail (currently includes markdown)."
     )
     @GetMapping("/{id}")
     public PostDetailResponse get(@PathVariable Long id) {
@@ -57,24 +60,30 @@ public class PostController {
 
     @Operation(
             summary = "List posts",
-            description = "List posts with optional title keyword search and pagination. Default sort is createdAt desc."
+            description = "List posts with optional keyword and category filters. Default sort is createdAt desc."
     )
     @GetMapping
     public PageResponse<PostListItemResponse> list(
             @Parameter(description = "Title keyword (contains, case-insensitive)", example = "테스트")
             @RequestParam(required = false) String keyword,
+
+            @Parameter(
+                    description = "Category filters (repeatable). e.g. categories=PRACTICE&categories=SYSTEM. If omitted, all categories.",
+                    example = "PRACTICE"
+            )
+            @RequestParam(required = false) List<String> categories,
+
             @ParameterObject
             @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable
     ) {
-        return postService.list(pageable, keyword);
+        return postService.list(pageable, keyword, categories);
     }
 
     @Operation(
             summary = "Create post by uploading .md file",
             description = "Upload a markdown file and create a post. If title is omitted, service may derive or set default title."
     )
-    // curl -v -X POST "http://localhost:8080/api/posts/upload" -F "file=@C:\Users\Kingdomcome\Documents\정규화.md" -F "title=업로드테스트"
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PostResponse createByUpload(
             @RequestParam("file") MultipartFile file,

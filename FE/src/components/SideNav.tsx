@@ -1,56 +1,42 @@
-import { NavLink, createSearchParams, useSearchParams } from "react-router-dom";
-import { CATEGORY_TREE, DEFAULT_CATEGORY, isCategoryKey } from "../lib/categories";
-
-function baseStyle(active: boolean) {
-    return {
-        display: "block",
-        padding: "10px 12px",
-        marginBottom: 6,
-        borderRadius: 10,
-        textDecoration: "none",
-        color: "#eaeaea",
-        background: active ? "#2b2b2b" : "transparent",
-        border: "1px solid #2a2a2a",
-        fontWeight: active ? 800 : 600,
-    } as const;
-}
+import { createSearchParams, NavLink, useSearchParams } from "react-router-dom";
+import { DEFAULT_CATEGORY, isCategoryKey, NAV_ITEMS, type CategoryKey } from "../lib/categories";
 
 export default function SideNav() {
     const [sp] = useSearchParams();
     const categoryParam = sp.get("category");
-    const current = isCategoryKey(categoryParam) ? categoryParam : DEFAULT_CATEGORY;
-
-    const parent = CATEGORY_TREE;
-    const children = CATEGORY_TREE.children;
+    const current: CategoryKey = isCategoryKey(categoryParam) ? categoryParam : DEFAULT_CATEGORY;
 
     return (
         <div>
-            <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>신입교육자료(Posts)</div>
+            {NAV_ITEMS.map((item) => (
+                <NavLink
+                    key={item.key}
+                    to={{
+                        pathname: "/posts",
+                        search: `?${createSearchParams({ category: item.key }).toString()}`,
+                    }}
+                    style={() => ({
+                        display: "block",
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        marginBottom: 6,
+                        border: "1px solid #2a2a2a",
+                        textDecoration: "none",
+                        color: "#eaeaea",
+                        background: current === item.key ? "#2b2b2b" : "transparent",
+                        fontWeight: current === item.key ? 800 : 600,
+                    })}
+                >
+                    {item.label}
+                </NavLink>
 
-            {/* ✅ 상위(ALL) */}
-            <NavLink
-                to={{ pathname: "/posts", search: `?${createSearchParams({ category: parent.key }).toString()}` }}
-                style={() => baseStyle(current === parent.key)}
-            >
-                {parent.label}
-            </NavLink>
-
-            {/* ✅ 하위들: 들여쓰기 */}
-            <div style={{ marginLeft: 10, marginTop: 8 }}>
-                {children.map((c) => (
-                    <NavLink
-                        key={c.key}
-                        to={{ pathname: "/posts", search: `?${createSearchParams({ category: c.key }).toString()}` }}
-                        style={() => baseStyle(current === c.key)}
-                    >
-                        {c.label}
-                    </NavLink>
-                ))}
-            </div>
-
+            ))}
             <div style={{ height: 16 }} />
 
-            <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>바로가기</div>
+            <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>
+                바로가기
+            </div>
+
             <a
                 href="http://localhost:8080/swagger-ui/index.html"
                 target="_blank"
@@ -67,6 +53,7 @@ export default function SideNav() {
             >
                 Swagger UI
             </a>
+
             <a
                 href="http://localhost:8080/h2-console"
                 target="_blank"
@@ -83,5 +70,7 @@ export default function SideNav() {
                 H2 Console
             </a>
         </div>
+
     );
 }
+

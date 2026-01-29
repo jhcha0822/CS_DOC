@@ -3,6 +3,7 @@ package com.fasoo.cs_doc.post.service;
 import com.fasoo.cs_doc.global.exception.NotFoundException;
 import com.fasoo.cs_doc.global.page.PageResponse;
 import com.fasoo.cs_doc.post.domain.Post;
+import com.fasoo.cs_doc.post.domain.PostCategory;
 import com.fasoo.cs_doc.post.dto.*;
 import com.fasoo.cs_doc.post.repository.PostRepository;
 import org.springframework.data.domain.Page;
@@ -26,25 +27,57 @@ public class PostService {
         this.storage = storage;
     }
 
-    @Transactional(readOnly = true)
-    public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword) {
-        Page<Post> page;
+    private PostListItemResponse toListItem(Post p) {
+        // ✅ category null 방어(네가 적용한 방향 유지)
+        PostCategory category = (p.getCategory() == null) ? PostCategory.PRACTICE : p.getCategory();
 
-        if (keyword == null || keyword.isBlank()) {
-            page = postRepository.findAll(pageable);
+        return new PostListItemResponse(
+                p.getId(),
+                p.getTitle(),
+                category,
+                p.getCreatedAt(),
+                p.getUpdatedAt()
+        );
+    }
+
+    private PostResponse toResponse(Post post) {
+        return new PostResponse(
+                post.getId(),
+                post.getTitle(),
+                post.getContentMdPath(),
+                post.getCreatedAt(),
+                post.getUpdatedAt()
+        );
+    }
+
+    /**
+     * ✅ 신규: 페이징 + keyword + categories 통합 목록
+     * Controller에서 categories는 List<String>으로 받으므로 여기서 enum 변환까지 처리한다.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword, List<String> categories) {
+
+        // 1) categories -> List<PostCategory>
+        List<PostCategory> targetCategories =
+                (categories == null || categories.isEmpty())
+                        ? List.of(PostCategory.values())
+                        : categories.stream()
+                        .map(s -> PostCategory.valueOf(s.toUpperCase()))
+                        .toList();
+
+        // 2) 조회
+        Page<Post> page;
+        String kw = (keyword == null) ? null : keyword.trim();
+
+        if (kw == null || kw.isBlank()) {
+            page = postRepository.findByCategoryIn(targetCategories, pageable);
         } else {
-            page = postRepository.findByTitleContainingIgnoreCase(keyword.trim(), pageable);
+            page = postRepository.findByCategoryInAndTitleContainingIgnoreCase(targetCategories, kw, pageable);
         }
 
+        // 3) PageResponse 매핑
         List<PostListItemResponse> items = page.getContent().stream()
-                .map(p -> {
-                    return new PostListItemResponse(
-                            p.getId(),
-                            p.getTitle(),
-                            p.getCreatedAt(),
-                            p.getUpdatedAt()
-                    );
-                })
+                .map(this::toListItem)
                 .toList();
 
         return PageResponse.of(
@@ -58,9 +91,19 @@ public class PostService {
         );
     }
 
+    /**
+     * (기존 호환) categories 없이 쓰던 list(pageable, keyword)
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword) {
+        return list(pageable, keyword, null);
+    }
+
     @Transactional
     public PostResponse create(PostCreateRequest req) {
-        Post saved = postRepository.save(new Post(req.title(), null));
+        // 🚨 여기서 new Post(req.title(), PostCategory.PRACTICE) 하면 타입 오류남.
+        // Post 생성자 2번째는 String(contentMdPath)로 쓰는 구조이기 때문.
+        Post saved = postRepository.save(new Post(req.title(), null)); // ✅ 원복/정답
 
         // 이제 mdPath는 항상 posts/{id}.md
         String mdPath = storage.saveNew(req.contentMd(), saved.getId());
@@ -84,6 +127,7 @@ public class PostService {
         return new PostDetailResponse(
                 post.getId(),
                 post.getTitle(),
+                post.getCategory(),
                 md,
                 post.getCreatedAt(),
                 post.getUpdatedAt()
@@ -117,22 +161,12 @@ public class PostService {
         return toResponse(post);
     }
 
-    private PostResponse toResponse(Post post) {
-        return new PostResponse(
-                post.getId(),
-                post.getTitle(),
-                post.getContentMdPath(),
-                post.getCreatedAt(),
-                post.getUpdatedAt()
-        );
-    }
-
     @Transactional
     public PostResponse createByUpload(MultipartFile file, String title) {
         String md = readMarkdownFromMultipart(file);
 
         String finalTitle = (title == null || title.isBlank())
-                ? extractTitleOrDefault(md)   // 선택
+                ? extractTitleOrDefault(md)
                 : title;
 
         Post saved = postRepository.save(new Post(finalTitle, null));
@@ -154,7 +188,6 @@ public class PostService {
         }
 
         try {
-            // UTF-8 기준으로 통일
             return new String(file.getBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read markdown upload", e);
@@ -236,5 +269,18 @@ public class PostService {
         }
 
         return toResponse(post);
+    }
+
+    /**
+     * (기존) FE 임시용: category 목록만 받아서 전체 조회(페이징 없음)
+     * ✅ Controller에서 이걸 쓰는 레거시 getPosts를 지웠으면, 이 메서드는 남겨도/지워도 무방.
+     * (다만 안 쓰면 정리 차원에서 삭제 추천)
+     */
+    @Transactional(readOnly = true)
+    public List<PostListItemResponse> list(List<PostCategory> categories) {
+        return postRepository.findByCategoryInOrderByCreatedAtDesc(categories)
+                .stream()
+                .map(this::toListItem)
+                .toList();
     }
 }

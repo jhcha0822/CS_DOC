@@ -34,4 +34,14 @@ public class GlobalExceptionHandler {
         log.error("UNEXPECTED_ERROR", e); // ✅ 스택트레이스 로그
         return new ErrorResponse("UNEXPECTED_ERROR", "Unexpected server error");
     }
+
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ErrorResponse handleNoResourceFound(org.springframework.web.servlet.resource.NoResourceFoundException e) {
+        // favicon.ico 같은 건 굳이 ERROR로 남기지 않기
+        return new ErrorResponse(
+                "NOT_FOUND",
+                e.getMessage()
+        );
+    }
 }

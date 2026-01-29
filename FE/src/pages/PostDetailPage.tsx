@@ -1,9 +1,10 @@
-import { Link, createSearchParams, useParams, useSearchParams } from "react-router-dom";
+import { Link, createSearchParams, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { DEFAULT_CATEGORY, isCategoryKey } from "../lib/categories";
 
 export default function PostDetailPage() {
     const { id } = useParams();
     const [sp] = useSearchParams();
+    const location = useLocation();
 
     const categoryParam = sp.get("category");
     const category = isCategoryKey(categoryParam) ? categoryParam : DEFAULT_CATEGORY;
@@ -20,7 +21,7 @@ export default function PostDetailPage() {
 
                 <div style={{ display: "flex", gap: 8 }}>
                     <Link
-                        to={`/posts/${id}/edit?${createSearchParams({ category }).toString()}`}
+                        to={`/posts/${id}/edit${location.search}`}
                         style={{
                             padding: "10px 12px",
                             borderRadius: 10,
@@ -34,7 +35,7 @@ export default function PostDetailPage() {
                         수정
                     </Link>
                     <Link
-                        to={`/posts?${createSearchParams({ category }).toString()}`}
+                        to={`/posts${location.search}`}
                         style={{
                             padding: "10px 12px",
                             borderRadius: 10,

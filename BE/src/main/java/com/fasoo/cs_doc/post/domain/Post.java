@@ -29,6 +29,10 @@ public class Post {
     @Column(nullable = true, length = PATH_MAX_LENGTH, unique = true)
     private String contentMdPath;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private PostCategory category;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -57,6 +61,7 @@ public class Post {
     public Long getId() { return id; }
     public String getTitle() { return title; }
     public String getContentMdPath() { return contentMdPath; }
+    public PostCategory getCategory() { return category; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
 
