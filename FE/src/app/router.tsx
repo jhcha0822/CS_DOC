@@ -6,7 +6,7 @@ import PostDetailPage from "../pages/PostDetailPage";
 import PostEditorPage from "../pages/PostEditorPage";
 
 export const router = createBrowserRouter([
-    { path: "/", element: <Navigate to="/posts?category=newbie" replace /> },
+    { path: "/", element: <Navigate to="/posts" replace /> },
     { path: "/login", element: <LoginPage /> },
     {
         path: "/",

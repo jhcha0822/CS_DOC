@@ -6,6 +6,8 @@ import com.fasoo.cs_doc.post.domain.Post;
 import com.fasoo.cs_doc.post.domain.PostCategory;
 import com.fasoo.cs_doc.post.dto.*;
 import com.fasoo.cs_doc.post.repository.PostRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,9 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final PostContentStorage storage;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     public PostService(PostRepository postRepository, PostContentStorage storage) {
         this.postRepository = postRepository;
@@ -101,11 +106,10 @@ public class PostService {
 
     @Transactional
     public PostResponse create(PostCreateRequest req) {
-        // 🚨 여기서 new Post(req.title(), PostCategory.TRAINING) 하면 타입 오류남.
-        // Post 생성자 2번째는 String(contentMdPath)로 쓰는 구조이기 때문.
-        Post saved = postRepository.save(new Post(req.title(), null)); // ✅ 원복/정답
+        Post post = new Post(req.title(), null);
+        post.changeCategory(req.category() != null ? req.category() : PostCategory.TRAINING);
+        Post saved = postRepository.save(post);
 
-        // 이제 mdPath는 항상 posts/{id}.md
         String mdPath = storage.saveNew(req.contentMd(), saved.getId());
         saved.changeContentMdPath(mdPath);
 
@@ -118,11 +122,9 @@ public class PostService {
                 .orElseThrow(() -> new NotFoundException("Post not found: " + id));
 
         String mdPath = post.getContentMdPath();
-        if (mdPath == null) {
-            throw new IllegalStateException("Post contentMdPath is null: " + id);
-        }
-
-        String md = storage.read(mdPath);
+        String md = (mdPath == null || mdPath.isBlank())
+                ? null
+                : storage.read(mdPath);
 
         return new PostDetailResponse(
                 post.getId(),
@@ -140,11 +142,9 @@ public class PostService {
                 .orElseThrow(() -> new NotFoundException("Post not found: " + id));
 
         String mdPath = post.getContentMdPath();
-        if (mdPath == null) {
-            throw new IllegalStateException("Post contentMdPath is null: " + id);
-        }
-
-        String md = storage.read(mdPath);
+        String md = (mdPath == null || mdPath.isBlank())
+                ? ""
+                : storage.read(mdPath);
         return new PostContentResponse(md);
     }
 
@@ -162,14 +162,16 @@ public class PostService {
     }
 
     @Transactional
-    public PostResponse createByUpload(MultipartFile file, String title) {
+    public PostResponse createByUpload(MultipartFile file, String title, PostCategory category) {
         String md = readMarkdownFromMultipart(file);
 
         String finalTitle = (title == null || title.isBlank())
                 ? extractTitleOrDefault(md)
                 : title;
 
-        Post saved = postRepository.save(new Post(finalTitle, null));
+        Post post = new Post(finalTitle, null);
+        post.changeCategory(category != null ? category : PostCategory.TRAINING);
+        Post saved = postRepository.save(post);
         String mdPath = storage.saveNew(md, saved.getId());
         saved.changeContentMdPath(mdPath);
 
@@ -221,11 +223,11 @@ public class PostService {
         // 3. 기존 contentMdPath 확인
         String mdPath = post.getContentMdPath();
         if (mdPath == null || mdPath.isBlank()) {
-            throw new IllegalStateException("contentMdPath is null for post: " + id);
+            mdPath = storage.saveNew(markdown, post.getId());
+            post.changeContentMdPath(mdPath);
+        } else {
+            storage.overwrite(mdPath, markdown);
         }
-
-        // 4. 기존 md 파일 덮어쓰기
-        storage.overwrite(mdPath, markdown);
 
         return toResponse(post);
     }
@@ -247,6 +249,7 @@ public class PostService {
     @Transactional
     public PostResponse patch(Long id, PostPatchRequest req) {
         if ((req.title() == null || req.title().isBlank())
+                && req.category() == null
                 && (req.markdown() == null)) {
             throw new IllegalArgumentException("Nothing to update");
         }
@@ -259,13 +262,21 @@ public class PostService {
             post.changeTitle(req.title());
         }
 
-        // 2) markdown 갱신(파일 overwrite)
+        // 1-2) category 갱신
+        if (req.category() != null) {
+            post.changeCategory(req.category());
+        }
+
+        // 2) markdown 갱신(파일 없으면 새로 생성)
         if (req.markdown() != null) {
             String mdPath = post.getContentMdPath();
             if (mdPath == null || mdPath.isBlank()) {
-                throw new IllegalStateException("contentMdPath is null for post: " + id);
+                mdPath = storage.saveNew(req.markdown(), post.getId());
+                post.changeContentMdPath(mdPath);
+                entityManager.flush();
+            } else {
+                storage.overwrite(mdPath, req.markdown());
             }
-            storage.overwrite(mdPath, req.markdown());
         }
 
         return toResponse(post);

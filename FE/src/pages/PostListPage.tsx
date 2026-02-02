@@ -1,16 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, createSearchParams, useSearchParams } from "react-router-dom";
 import { fetchPosts, type PostListItem } from "../lib/api";
 import {
-    DEFAULT_CATEGORY,
-    getApiCategoriesByKey,
-    isCategoryKey,
+    getApiCategoriesFromCatParam,
+    getCurrentCategoryKeyFromCatParam,
     labelOfApiCategory,
-    type CategoryKey,
+    NAV_ITEMS,
 } from "../lib/categories";
 
 function formatKST(iso: string) {
-    // ISO -> "YYYY.MM.DD HH:mm"
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -21,19 +19,37 @@ function formatKST(iso: string) {
 
 export default function PostListPage() {
     const [sp, setSp] = useSearchParams();
+    const catParam = sp.get("cat");
+    const currentKey = getCurrentCategoryKeyFromCatParam(catParam);
+    const allowedApiCats = useMemo(
+        () => getApiCategoriesFromCatParam(catParam),
+        [catParam]
+    );
 
-    const categoryParam = sp.get("category");
-    const currentKey: CategoryKey = isCategoryKey(categoryParam)
-        ? categoryParam
-        : DEFAULT_CATEGORY;
+    const qFromUrl = sp.get("q") ?? "";
+    const [inputQ, setInputQ] = useState(qFromUrl);
+    const isComposingRef = useRef(false);
 
-    const [q, setQ] = useState(sp.get("q") ?? "");
+    // URL → 입력창 동기화: 조합 중에는 덮어쓰지 않아 한글 마지막 글자가 보이도록 함
+    useEffect(() => {
+        if (!isComposingRef.current) {
+            setInputQ(qFromUrl);
+        }
+    }, [qFromUrl]);
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [items, setItems] = useState<PostListItem[]>([]);
 
-    // 현재 선택 카테고리가 의미하는 BE 카테고리들
-    const allowedApiCats = useMemo(() => getApiCategoriesByKey(currentKey), [currentKey]);
+    const commitSearch = useCallback(
+        (value: string) => {
+            const next = new URLSearchParams(sp);
+            if (value.trim()) next.set("q", value.trim());
+            else next.delete("q");
+            setSp(next, { replace: true });
+        },
+        [sp, setSp]
+    );
 
     useEffect(() => {
         let cancelled = false;
@@ -41,26 +57,21 @@ export default function PostListPage() {
         async function run() {
             setLoading(true);
             setError(null);
-
             try {
-                // 1) 서버에 categories를 보내서 "지원하면" 필터링
-                // 2) 서버가 무시해도 아래에서 FE에서 다시 필터링
                 const data = await fetchPosts({
                     categories: allowedApiCats,
-                    q: (sp.get("q") ?? "").trim() || undefined,
+                    q: qFromUrl.trim() || undefined,
                 });
-
                 if (cancelled) return;
-
-                // 안전장치: 서버가 전체를 내려줘도 FE에서 확실히 필터링
-                const filtered = (data.items ?? []).filter((it) =>
+                const list = (data.items ?? []).filter((it) =>
                     allowedApiCats.includes(it.category)
                 );
-
-                setItems(filtered);
-            } catch (e: any) {
+                setItems(list);
+            } catch (e) {
                 if (cancelled) return;
-                setError(e?.message || "목록을 불러오지 못했습니다.");
+                const msg =
+                    e instanceof Error ? e.message : "목록을 불러오지 못했습니다.";
+                setError(msg);
                 setItems([]);
             } finally {
                 if (!cancelled) setLoading(false);
@@ -71,54 +82,66 @@ export default function PostListPage() {
         return () => {
             cancelled = true;
         };
-    }, [allowedApiCats, sp]);
+    }, [allowedApiCats, qFromUrl]);
 
     const title = useMemo(() => {
-        switch (currentKey) {
-            case "training":
-                return "실습";
-            case "incident":
-                return "장애 지원";
-            case "system":
-                return "업무시스템";
-            case "newbie":
-            default:
-                return "신입 교육 자료";
-        }
+        const found = NAV_ITEMS.find((i) => i.key === currentKey);
+        return found ? found.label : "신입 교육 자료";
     }, [currentKey]);
 
     const onSearch = () => {
-        const next = new URLSearchParams(sp);
-        if (q.trim()) next.set("q", q.trim());
-        else next.delete("q");
-        // category는 유지
-        setSp(next, { replace: true });
+        commitSearch(inputQ);
     };
 
     const onReset = () => {
-        setQ("");
-        const next = new URLSearchParams(sp);
-        next.delete("q");
-        setSp(next, { replace: true });
+        setInputQ("");
+        commitSearch("");
     };
+
+    const onCompositionStart = () => {
+        isComposingRef.current = true;
+    };
+
+    const onCompositionEnd = (
+        e: React.CompositionEvent<HTMLInputElement>
+    ) => {
+        const target = e.target as HTMLInputElement;
+        const value = target.value ?? "";
+        setInputQ(value);
+        isComposingRef.current = false;
+        commitSearch(value);
+    };
+
+    const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            const v = (e.target as HTMLInputElement).value ?? inputQ;
+            commitSearch(v);
+            setInputQ(v);
+        }
+    };
+
+    const listSearchParams = useMemo(() => {
+        const p: Record<string, string> = {};
+        if (catParam) p.cat = catParam;
+        if (qFromUrl) p.q = qFromUrl;
+        return p;
+    }, [catParam, qFromUrl]);
 
     return (
         <div>
-            {/* 상단 헤더 */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end" }}>
+            <div className="header-actions" style={{ display: "flex", justifyContent: "space-between", alignItems: "end" }}>
                 <div>
                     <div style={{ fontSize: 26, fontWeight: 900 }}>{title}</div>
                 </div>
-
                 <Link
-                    to={`/posts/new?${createSearchParams({ category: currentKey }).toString()}`}
+                    to={`/posts/new?${createSearchParams(listSearchParams).toString()}`}
                     style={{
                         padding: "10px 14px",
                         borderRadius: 10,
-                        border: "1px solid #2a2a2a",
+                        border: "1px solid #444",
                         textDecoration: "none",
-                        color: "#eaeaea",
-                        background: "#1e1e1e",
+                        color: "#fff",
+                        background: "#2563eb",
                         fontWeight: 800,
                     }}
                 >
@@ -126,7 +149,6 @@ export default function PostListPage() {
                 </Link>
             </div>
 
-            {/* 검색 */}
             <div
                 style={{
                     marginTop: 14,
@@ -136,19 +158,19 @@ export default function PostListPage() {
                 }}
             >
                 <input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter") onSearch();
-                    }}
+                    value={inputQ}
+                    onChange={(e) => setInputQ(e.target.value)}
+                    onCompositionStart={onCompositionStart}
+                    onCompositionEnd={onCompositionEnd}
+                    onKeyDown={onKeyDown}
                     placeholder="검색어"
                     style={{
                         flex: 1,
                         padding: "10px 12px",
                         borderRadius: 10,
-                        border: "1px solid #2a2a2a",
-                        background: "#0f0f0f",
-                        color: "#eaeaea",
+                        border: "1px solid #444",
+                        background: "#f5f5f5",
+                        color: "#111",
                         outline: "none",
                     }}
                 />
@@ -157,8 +179,8 @@ export default function PostListPage() {
                     style={{
                         padding: "10px 12px",
                         borderRadius: 10,
-                        border: "1px solid #2a2a2a",
-                        background: "#eaeaea",
+                        border: "1px solid #444",
+                        background: "#fff",
                         color: "#111",
                         fontWeight: 800,
                         cursor: "pointer",
@@ -171,8 +193,8 @@ export default function PostListPage() {
                     style={{
                         padding: "10px 12px",
                         borderRadius: 10,
-                        border: "1px solid #2a2a2a",
-                        background: "#eaeaea",
+                        border: "1px solid #444",
+                        background: "#fff",
                         color: "#111",
                         fontWeight: 800,
                         cursor: "pointer",
@@ -182,32 +204,32 @@ export default function PostListPage() {
                 </button>
             </div>
 
-            {/* 상태 표시 */}
             {loading && (
                 <div style={{ marginTop: 14, opacity: 0.8 }}>불러오는 중...</div>
             )}
             {error && (
-                <div style={{ marginTop: 14, color: "#ff6b6b", fontWeight: 700 }}>{error}</div>
+                <div style={{ marginTop: 14, color: "var(--app-error)", fontWeight: 700 }}>
+                    {error}
+                </div>
             )}
 
-            {/* 목록 */}
             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                 {!loading && !error && items.length === 0 && (
                     <div style={{ opacity: 0.8, marginTop: 8 }}>게시글이 없습니다.</div>
                 )}
 
                 {items.map((post) => {
-                    const detailUrl = `/posts/${post.id}?${createSearchParams({
-                        category: currentKey,
-                    }).toString()}`;
+                    const detailSearch = new URLSearchParams(listSearchParams);
+                    const detailUrl = `/posts/${post.id}?${detailSearch.toString()}`;
 
                     return (
                         <div
                             key={post.id}
+                            className="content-card"
                             style={{
-                                border: "1px solid #2a2a2a",
+                                border: "1px solid #444",
                                 borderRadius: 14,
-                                background: "#101010",
+                                background: "#fff",
                                 padding: 14,
                             }}
                         >
@@ -220,14 +242,13 @@ export default function PostListPage() {
                                 }}
                             >
                                 <div style={{ minWidth: 0 }}>
-                                    {/* 제목 = 상세 링크 */}
                                     <Link
                                         to={detailUrl}
                                         style={{
                                             display: "inline-block",
                                             fontSize: 18,
                                             fontWeight: 900,
-                                            color: "#eaeaea",
+                                            color: "var(--app-text)",
                                             textDecoration: "none",
                                             lineHeight: 1.3,
                                             wordBreak: "break-word",
@@ -235,14 +256,10 @@ export default function PostListPage() {
                                     >
                                         {post.title}
                                     </Link>
-
-                                    {/* 카테고리 한글명만 표시 (본문/미리보기는 아예 제거) */}
                                     <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
                                         {labelOfApiCategory(post.category)}
                                     </div>
                                 </div>
-
-                                {/* 수정일 오른쪽 정렬 */}
                                 <div style={{ fontSize: 12, opacity: 0.8, whiteSpace: "nowrap" }}>
                                     {formatKST(post.updatedAt)}
                                 </div>

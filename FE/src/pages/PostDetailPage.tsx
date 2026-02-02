@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, createSearchParams, useParams, useSearchParams } from "react-router-dom";
 import { fetchPost, type PostDetail } from "../lib/api";
-import { DEFAULT_CATEGORY, isCategoryKey, labelOfApiCategory } from "../lib/categories";
+import { ApiError } from "../lib/api";
+import { labelOfApiCategory } from "../lib/categories";
+import { useColorScheme } from "../lib/useColorScheme";
+import MarkdownPreview from "@uiw/react-markdown-preview";
+import "@uiw/react-markdown-preview/markdown.css";
 
 function formatKST(iso: string) {
     const d = new Date(iso);
@@ -15,15 +19,25 @@ function formatKST(iso: string) {
 export default function PostDetailPage() {
     const { id } = useParams();
     const [sp] = useSearchParams();
-
-    const categoryParam = sp.get("category");
-    const categoryKey = isCategoryKey(categoryParam) ? categoryParam : DEFAULT_CATEGORY;
+    const catParam = sp.get("cat");
+    const qParam = sp.get("q");
+    const colorScheme = useColorScheme();
 
     const postId = Number(id);
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [post, setPost] = useState<PostDetail | null>(null);
+
+    const listSearchParams = useCallback(() => {
+        const p: Record<string, string> = {};
+        if (catParam) p.cat = catParam;
+        if (qParam) p.q = qParam;
+        return p;
+    }, [catParam, qParam]);
+
+    const listUrl = `/posts?${createSearchParams(listSearchParams()).toString()}`;
+    const editUrl = `/posts/${postId}/edit?${createSearchParams(listSearchParams()).toString()}`;
 
     useEffect(() => {
         let cancelled = false;
@@ -42,9 +56,15 @@ export default function PostDetailPage() {
                 const data = await fetchPost(postId);
                 if (cancelled) return;
                 setPost(data);
-            } catch (e: any) {
+            } catch (e) {
                 if (cancelled) return;
-                setError(e?.message || "Failed to fetch post");
+                const msg =
+                    e instanceof ApiError
+                        ? e.message
+                        : e instanceof Error
+                          ? e.message
+                          : "게시글을 불러오지 못했습니다.";
+                setError(msg);
                 setPost(null);
             } finally {
                 if (!cancelled) setLoading(false);
@@ -57,12 +77,10 @@ export default function PostDetailPage() {
         };
     }, [postId]);
 
-    const listUrl = `/posts?${createSearchParams({ category: categoryKey }).toString()}`;
-    const editUrl = `/posts/${postId}/edit?${createSearchParams({ category: categoryKey }).toString()}`;
+    const bodyText = post?.contentMd ?? "";
 
     return (
-        <div>
-            {/* 헤더 */}
+        <div style={{ maxWidth: "100%", minWidth: 0 }}>
             <div
                 style={{
                     display: "flex",
@@ -79,18 +97,23 @@ export default function PostDetailPage() {
                     </div>
                 </div>
 
-                {/* 버튼: 깨지지 않게 wrap 허용 */}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div className="header-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
                     <Link
                         to={editUrl}
                         style={{
-                            padding: "10px 12px",
+                            width: 90,
+                            minHeight: 42,
+                            padding: "10px 14px",
                             borderRadius: 10,
-                            border: "1px solid #2a2a2a",
+                            border: "1px solid #444",
                             textDecoration: "none",
-                            color: "#eaeaea",
-                            background: "#1e1e1e",
+                            color: "#fff",
+                            background: "#2563eb",
                             fontWeight: 800,
+                            boxSizing: "border-box",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                         }}
                     >
                         수정
@@ -98,12 +121,19 @@ export default function PostDetailPage() {
                     <Link
                         to={listUrl}
                         style={{
-                            padding: "10px 12px",
+                            width: 90,
+                            minHeight: 42,
+                            padding: "10px 14px",
                             borderRadius: 10,
-                            border: "1px solid #2a2a2a",
+                            border: "1px solid #444",
                             textDecoration: "none",
-                            color: "#eaeaea",
+                            color: "#111",
+                            background: "#fff",
                             fontWeight: 800,
+                            boxSizing: "border-box",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                         }}
                     >
                         목록
@@ -111,14 +141,14 @@ export default function PostDetailPage() {
                 </div>
             </div>
 
-            {/* 바디 */}
             <div
+                className="content-card"
                 style={{
                     marginTop: 16,
                     padding: 14,
                     borderRadius: 12,
-                    border: "1px solid #2a2a2a",
-                    background: "#121212",
+                    border: "1px solid #444",
+                    background: "#fff",
                     minHeight: 120,
                 }}
             >
@@ -126,9 +156,9 @@ export default function PostDetailPage() {
 
                 {error && (
                     <div>
-                        <div style={{ color: "#ff6b6b", fontWeight: 800 }}>{error}</div>
+                        <div style={{ color: "var(--app-error)", fontWeight: 800 }}>{error}</div>
                         <div style={{ marginTop: 10, opacity: 0.8 }}>
-                            <Link to={listUrl} style={{ color: "#7aa7ff" }}>
+                            <Link to={listUrl} style={{ color: "var(--app-link)" }}>
                                 목록으로 돌아가기 →
                             </Link>
                         </div>
@@ -139,10 +169,33 @@ export default function PostDetailPage() {
                     <div>
                         <div style={{ fontWeight: 900, fontSize: 18 }}>{post.title}</div>
                         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-                            {labelOfApiCategory(post.category)} · 수정 {formatKST(post.updatedAt)}
+                            {labelOfApiCategory(post.category)} · 생성{" "}
+                            {formatKST(post.createdAt)} · 수정{" "}
+                            {formatKST(post.updatedAt)}
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+                            id: {post.id}
                         </div>
 
-                        {/* ✅ 본문(글 내용) 영역은 요구사항대로 아예 표시하지 않음 */}
+                        <div
+                            className="markdown-preview"
+                            data-color-mode={colorScheme}
+                            style={{
+                                marginTop: 16,
+                                padding: bodyText ? 16 : 0,
+                                background: bodyText ? "var(--app-bg)" : "transparent",
+                                borderRadius: 8,
+                                overflow: "auto",
+                                minHeight: bodyText ? 80 : 0,
+                                maxWidth: "100%",
+                            }}
+                        >
+                            {bodyText ? (
+                                <MarkdownPreview source={bodyText} />
+                            ) : (
+                                <span style={{ opacity: 0.6 }}>본문이 없습니다.</span>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>

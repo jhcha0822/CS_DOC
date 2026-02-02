@@ -10,6 +10,7 @@ logging:
   level:
     org.hibernate.SQL: debug
 
-  app:
-    storage:
-      md-root: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\md
+app:
+  storage:
+    md-root: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\md
+    upload-dir: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\uploads

@@ -7,6 +7,7 @@ export type ApiCategory = "SYSTEM" | "INCIDENT" | "TRAINING";
 
 export const DEFAULT_CATEGORY: CategoryKey = "newbie";
 
+/** 네비용 트리(라벨 매핑) — 단일 진실 소스 */
 export const NAV_ITEMS: Array<{ key: CategoryKey; label: string }> = [
     { key: "newbie", label: "신입 교육 자료" },
     { key: "training", label: "실습" },
@@ -14,16 +15,62 @@ export const NAV_ITEMS: Array<{ key: CategoryKey; label: string }> = [
     { key: "system", label: "업무시스템" },
 ];
 
+/** 호환용: CATEGORY_TREE = NAV_ITEMS */
+export const CATEGORY_TREE = NAV_ITEMS;
+
+export const API_CATEGORY_LABEL: Record<ApiCategory, string> = {
+    SYSTEM: "업무시스템",
+    INCIDENT: "장애 지원",
+    TRAINING: "실습",
+};
+
+/** 화면 키 → URL/API용 단일 카테고리 (newbie는 전체이므로 제외) */
+export const KEY_TO_API_CATEGORY: Record<Exclude<CategoryKey, "newbie">, ApiCategory> = {
+    training: "TRAINING",
+    incident: "INCIDENT",
+    system: "SYSTEM",
+};
+
+/** URL cat 값 → 네비 하이라이트용 키 */
+export const API_TO_KEY: Record<ApiCategory, CategoryKey> = {
+    TRAINING: "training",
+    INCIDENT: "incident",
+    SYSTEM: "system",
+};
+
 export function isCategoryKey(v: unknown): v is CategoryKey {
     return v === "newbie" || v === "training" || v === "incident" || v === "system";
 }
 
+export function isApiCategory(v: unknown): v is ApiCategory {
+    return v === "SYSTEM" || v === "INCIDENT" || v === "TRAINING";
+}
+
+/**
+ * URL 쿼리 cat 값 → BE categories 배열
+ * cat=INCIDENT → [INCIDENT], 없거나 비유효 → 전체 [SYSTEM, INCIDENT, TRAINING]
+ */
+export function getApiCategoriesFromCatParam(catParam: string | null): ApiCategory[] {
+    if (catParam != null && isApiCategory(catParam)) {
+        return [catParam];
+    }
+    return ["SYSTEM", "INCIDENT", "TRAINING"];
+}
+
+/**
+ * URL cat 값 → 현재 선택된 네비 키 (사이드바 하이라이트)
+ */
+export function getCurrentCategoryKeyFromCatParam(catParam: string | null): CategoryKey {
+    if (catParam != null && isApiCategory(catParam)) {
+        return API_TO_KEY[catParam];
+    }
+    return DEFAULT_CATEGORY;
+}
+
 /**
  * 화면 카테고리(key) -> BE category 목록
- * - newbie: 전체(신입 교육 자료는 전체 묶음)
- * - training: TRAINING
- * - incident: INCIDENT
- * - system: SYSTEM
+ * - newbie: 전체
+ * - training: TRAINING, incident: INCIDENT, system: SYSTEM
  */
 export function getApiCategoriesByKey(key: CategoryKey): ApiCategory[] {
     switch (key) {
@@ -39,11 +86,8 @@ export function getApiCategoriesByKey(key: CategoryKey): ApiCategory[] {
     }
 }
 
-export const API_CATEGORY_LABEL: Record<ApiCategory, string> = {
-    SYSTEM: "업무시스템",
-    INCIDENT: "장애 지원",
-    TRAINING: "실습",
-};
+/** 호환용: toApiCategories = getApiCategoriesByKey */
+export const toApiCategories = getApiCategoriesByKey;
 
 export function labelOfApiCategory(cat?: string | null): string {
     if (cat === "SYSTEM" || cat === "INCIDENT" || cat === "TRAINING") {

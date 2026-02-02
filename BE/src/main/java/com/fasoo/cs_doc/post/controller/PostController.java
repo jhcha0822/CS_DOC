@@ -82,14 +82,18 @@ public class PostController {
 
     @Operation(
             summary = "Create post by uploading .md file",
-            description = "Upload a markdown file and create a post. If title is omitted, service may derive or set default title."
+            description = "Upload a markdown file and create a post. If title is omitted, service may derive or set default title. category: SYSTEM, INCIDENT, TRAINING."
     )
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PostResponse createByUpload(
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "title", required = false) String title
+            @RequestParam(value = "title", required = false) String title,
+            @RequestParam(value = "category", required = false) String category
     ) {
-        return postService.createByUpload(file, title);
+        var cat = (category != null && !category.isBlank())
+                ? com.fasoo.cs_doc.post.domain.PostCategory.valueOf(category.toUpperCase())
+                : null;
+        return postService.createByUpload(file, title, cat);
     }
 
     @Operation(

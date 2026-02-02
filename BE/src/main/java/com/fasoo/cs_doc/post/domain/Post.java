@@ -98,4 +98,11 @@ public class Post {
         }
         this.contentMdPath = trimmed;
     }
+
+    public void changeCategory(PostCategory category) {
+        if (category == null) {
+            throw new IllegalArgumentException("category must not be null");
+        }
+        this.category = category;
+    }
 }

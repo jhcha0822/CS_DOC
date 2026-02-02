@@ -11,3 +11,4 @@ spring:
   app:
     storage:
       md-root: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\md
+      upload-dir: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\uploads
