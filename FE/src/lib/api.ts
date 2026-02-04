@@ -80,21 +80,43 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 /**
+ * 검색 범위: 제목 / 내용 / 작성자 / 모두포함
+ */
+export type SearchIn = "title" | "content" | "author" | "all";
+
+/**
  * 목록 조회
- * - BE: keyword(검색어), categories(반복 파라미터)
+ * - BE: keyword(검색어), searchIn(검색범위), categories(반복 파라미터), categoryId(카테고리 ID), page(0-based), size
  */
 export async function fetchPosts(params?: {
     categories?: ApiCategory[];
     q?: string;
+    searchIn?: SearchIn;
+    categoryId?: number;
+    page?: number;
+    size?: number;
 }): Promise<PostListResponse> {
     const url = new URL("/api/posts", API_BASE);
 
-    if (params?.categories?.length) {
+    if (params?.categoryId != null) {
+        url.searchParams.set("categoryId", String(params.categoryId));
+    } else if (params?.categories?.length) {
         params.categories.forEach((c) => url.searchParams.append("categories", c));
     }
 
     if (params?.q?.trim()) {
         url.searchParams.set("keyword", params.q.trim());
+    }
+
+    if (params?.searchIn && params.searchIn !== "title") {
+        url.searchParams.set("searchIn", params.searchIn);
+    }
+
+    if (params?.page != null && params.page >= 0) {
+        url.searchParams.set("page", String(params.page));
+    }
+    if (params?.size != null && params.size > 0) {
+        url.searchParams.set("size", String(params.size));
     }
 
     const data = await fetchJson<PostListResponse>(url.toString());
@@ -267,4 +289,118 @@ export async function updateContentByUpload(
         );
     }
     return res.json() as Promise<PostResponse>;
+}
+
+// --- Category (관리용, 추후 RBAC 적용) ---
+
+export type CategoryItem = {
+    id: number;
+    label: string;
+    parentId: number | null;
+    parentLabel: string | null;
+    depth: number;
+    sortOrder: number;
+};
+
+export type CategoryBulkUpdateItem = {
+    id: number;
+    label: string;
+    parentId: number | null;
+    depth: number;
+    sortOrder: number;
+};
+
+export async function fetchCategories(): Promise<CategoryItem[]> {
+    const url = new URL("/api/categories", API_BASE);
+    try {
+        return await fetchJson<CategoryItem[]>(url.toString());
+    } catch (e) {
+        console.error("fetchCategories error:", e);
+        throw e;
+    }
+}
+
+export async function createCategory(payload: { label: string; parentId?: number | null }): Promise<CategoryItem> {
+    const url = new URL("/api/categories", API_BASE);
+    const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            label: payload.label.trim(),
+            parentId: payload.parentId ?? null,
+        }),
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return res.json() as Promise<CategoryItem>;
+}
+
+export async function updateCategory(
+    id: number,
+    payload: { label?: string; parentId?: number | null }
+): Promise<CategoryItem> {
+    const url = new URL(`/api/categories/${id}`, API_BASE);
+    const body: Record<string, unknown> = {};
+    if (payload.label !== undefined) body.label = payload.label.trim();
+    if (payload.parentId !== undefined) body.parentId = payload.parentId;
+    const res = await fetch(url.toString(), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return res.json() as Promise<CategoryItem>;
+}
+
+export async function bulkUpdateCategories(items: CategoryBulkUpdateItem[]): Promise<void> {
+    const url = new URL("/api/categories/bulk", API_BASE);
+    const res = await fetch(url.toString(), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+    });
+    if (!res.ok) {
+        let errorText = "";
+        try {
+            const json = await res.json();
+            errorText = json.message || JSON.stringify(json);
+        } catch {
+            errorText = await res.text().catch(() => "");
+        }
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${errorText ? ` - ${errorText.slice(0, 200)}` : ""}`,
+            res.status,
+            errorText
+        );
+    }
+}
+
+export async function reorderCategories(orderedIds: number[]): Promise<void> {
+    const url = new URL("/api/categories/reorder", API_BASE);
+    const res = await fetch(url.toString(), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds }),
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
 }

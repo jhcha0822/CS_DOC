@@ -32,7 +32,11 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ErrorResponse handleUnexpected(Exception e) {
         log.error("UNEXPECTED_ERROR", e); // ✅ 스택트레이스 로그
-        return new ErrorResponse("UNEXPECTED_ERROR", "Unexpected server error");
+        String message = e.getMessage();
+        if (message == null || message.isEmpty()) {
+            message = e.getClass().getSimpleName();
+        }
+        return new ErrorResponse("UNEXPECTED_ERROR", message);
     }
 
     @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)

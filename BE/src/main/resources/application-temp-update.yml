@@ -1,0 +1,18 @@
+# TEMPORARY: Use this to auto-add missing columns
+# After running once, change back to validate
+spring:
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        ddl-auto: update  # TEMPORARY: Change back to 'validate' after first run
+        format_sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+
+app:
+  storage:
+    md-root: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\md
+    upload-dir: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\uploads

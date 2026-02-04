@@ -3,7 +3,6 @@ import { Link, createSearchParams, useParams, useSearchParams } from "react-rout
 import { fetchPost, type PostDetail } from "../lib/api";
 import { ApiError } from "../lib/api";
 import { labelOfApiCategory } from "../lib/categories";
-import { useColorScheme } from "../lib/useColorScheme";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import "@uiw/react-markdown-preview/markdown.css";
 
@@ -21,7 +20,6 @@ export default function PostDetailPage() {
     const [sp] = useSearchParams();
     const catParam = sp.get("cat");
     const qParam = sp.get("q");
-    const colorScheme = useColorScheme();
 
     const postId = Number(id);
 
@@ -125,10 +123,10 @@ export default function PostDetailPage() {
                             minHeight: 42,
                             padding: "10px 14px",
                             borderRadius: 10,
-                            border: "1px solid #444",
+                            border: "1px solid var(--app-btn-secondary-border)",
                             textDecoration: "none",
-                            color: "#111",
-                            background: "#fff",
+                            color: "var(--app-btn-secondary-text)",
+                            background: "var(--app-btn-secondary-bg)",
                             fontWeight: 800,
                             boxSizing: "border-box",
                             display: "inline-flex",
@@ -147,8 +145,9 @@ export default function PostDetailPage() {
                     marginTop: 16,
                     padding: 14,
                     borderRadius: 12,
-                    border: "1px solid #444",
-                    background: "#fff",
+                    border: "1px solid var(--app-border)",
+                    background: "var(--app-bg)",
+                    color: "var(--app-text)",
                     minHeight: 120,
                 }}
             >
@@ -179,7 +178,7 @@ export default function PostDetailPage() {
 
                         <div
                             className="markdown-preview"
-                            data-color-mode={colorScheme}
+                            data-color-mode="light"
                             style={{
                                 marginTop: 16,
                                 padding: bodyText ? 16 : 0,

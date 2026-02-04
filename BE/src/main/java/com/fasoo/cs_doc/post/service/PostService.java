@@ -1,5 +1,7 @@
 package com.fasoo.cs_doc.post.service;
 
+import com.fasoo.cs_doc.category.domain.Category;
+import com.fasoo.cs_doc.category.repository.CategoryRepository;
 import com.fasoo.cs_doc.global.exception.NotFoundException;
 import com.fasoo.cs_doc.global.page.PageResponse;
 import com.fasoo.cs_doc.post.domain.Post;
@@ -16,20 +18,24 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class PostService {
 
     private final PostRepository postRepository;
     private final PostContentStorage storage;
+    private final CategoryRepository categoryRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
 
-    public PostService(PostRepository postRepository, PostContentStorage storage) {
+    public PostService(PostRepository postRepository, PostContentStorage storage, CategoryRepository categoryRepository) {
         this.postRepository = postRepository;
         this.storage = storage;
+        this.categoryRepository = categoryRepository;
     }
 
     private PostListItemResponse toListItem(Post p) {
@@ -56,21 +62,77 @@ public class PostService {
     }
 
     /**
-     * ✅ 신규: 페이징 + keyword + categories 통합 목록
-     * Controller에서 categories는 List<String>으로 받으므로 여기서 enum 변환까지 처리한다.
+     * Category code를 PostCategory enum으로 변환
+     */
+    private PostCategory codeToPostCategory(String code) {
+        if (code == null) return null;
+        String upper = code.toUpperCase();
+        if (upper.contains("SYSTEM")) return PostCategory.SYSTEM;
+        if (upper.contains("INCIDENT")) return PostCategory.INCIDENT;
+        if (upper.contains("TRAINING")) return PostCategory.TRAINING;
+        return null;
+    }
+
+    /**
+     * 카테고리 ID와 그 하위 카테고리들의 PostCategory 목록 반환
+     * 상위 카테고리는 하위 카테고리들의 PostCategory만 포함
+     * PostCategory로 변환할 수 없는 카테고리는 빈 리스트 반환 (게시글이 없음을 의미)
+     */
+    private List<PostCategory> getPostCategoriesByCategoryId(Long categoryId) {
+        Category category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new NotFoundException("Category", categoryId));
+        List<PostCategory> result = new ArrayList<>();
+        List<Category> children = categoryRepository.findByParentIdOrderBySortOrderAsc(categoryId);
+        for (Category child : children) {
+            PostCategory childCat = codeToPostCategory(child.getCode());
+            if (childCat != null && !result.contains(childCat)) {
+                result.add(childCat);
+            }
+        }
+        if (result.isEmpty()) {
+            // 하위 카테고리가 없으면 자기 자신의 code를 PostCategory로 변환 시도
+            PostCategory selfCat = codeToPostCategory(category.getCode());
+            if (selfCat != null) {
+                result.add(selfCat);
+            }
+            // PostCategory로 변환할 수 없으면 빈 리스트 반환 (게시글이 없음을 의미)
+        }
+        return result;
+    }
+
+    /**
+     * ✅ 신규: 페이징 + keyword + searchIn + categories + categoryId 통합 목록
+     * searchIn: title, content, author, all. 현재는 title/all만 제목 검색, content/author는 추후 확장.
+     * categoryId가 있으면 해당 카테고리와 하위 카테고리들만 조회
      */
     @Transactional(readOnly = true)
-    public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword, List<String> categories) {
+    public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword, String searchIn, List<String> categories, Long categoryId) {
 
-        // 1) categories -> List<PostCategory>
-        List<PostCategory> targetCategories =
-                (categories == null || categories.isEmpty())
-                        ? List.of(PostCategory.values())
-                        : categories.stream()
-                        .map(s -> PostCategory.valueOf(s.toUpperCase()))
-                        .toList();
+        // 1) categoryId가 있으면 해당 카테고리와 하위 카테고리들의 PostCategory 사용
+        List<PostCategory> targetCategories;
+        if (categoryId != null) {
+            targetCategories = getPostCategoriesByCategoryId(categoryId);
+            // 빈 리스트면 게시글이 없는 카테고리이므로 빈 결과 반환
+            if (targetCategories.isEmpty()) {
+                return PageResponse.of(
+                        List.of(),
+                        pageable.getPageNumber(),
+                        pageable.getPageSize(),
+                        0L,
+                        0,
+                        false,
+                        false
+                );
+            }
+        } else if (categories != null && !categories.isEmpty()) {
+            targetCategories = categories.stream()
+                    .map(s -> PostCategory.valueOf(s.toUpperCase()))
+                    .collect(Collectors.toList());
+        } else {
+            targetCategories = List.of(PostCategory.values());
+        }
 
-        // 2) 조회
+        // 2) 조회 (searchIn에 따라 추후 content/author 검색 확장 가능, 현재는 모두 제목 검색)
         Page<Post> page;
         String kw = (keyword == null) ? null : keyword.trim();
 
@@ -101,7 +163,7 @@ public class PostService {
      */
     @Transactional(readOnly = true)
     public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword) {
-        return list(pageable, keyword, null);
+        return list(pageable, keyword, null, null, null);
     }
 
     @Transactional

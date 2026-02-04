@@ -18,6 +18,14 @@ export const NAV_ITEMS: Array<{ key: CategoryKey; label: string }> = [
 /** 호환용: CATEGORY_TREE = NAV_ITEMS */
 export const CATEGORY_TREE = NAV_ITEMS;
 
+/** 사이드바용: 상위 카테고리 + 하위(들여쓰기) 구조 */
+export const SIDEBAR_NAV: Array<{ key: CategoryKey; label: string; indent?: boolean }> = [
+    { key: "newbie", label: "신입 교육 자료" },
+    { key: "system", label: "업무시스템", indent: true },
+    { key: "incident", label: "장애 지원", indent: true },
+    { key: "training", label: "실습", indent: true },
+];
+
 export const API_CATEGORY_LABEL: Record<ApiCategory, string> = {
     SYSTEM: "업무시스템",
     INCIDENT: "장애 지원",

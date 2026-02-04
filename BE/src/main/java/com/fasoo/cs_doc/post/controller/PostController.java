@@ -67,17 +67,23 @@ public class PostController {
             @Parameter(description = "Title keyword (contains, case-insensitive)", example = "테스트")
             @RequestParam(required = false) String keyword,
 
+            @Parameter(description = "Search scope: title, content, author, all. Default title.")
+            @RequestParam(required = false) String searchIn,
+
             @Parameter(
                     description = "Category filters (repeatable). e.g. categories=TRAINING&categories=SYSTEM. If omitted, all categories.",
                     example = "TRAINING"
             )
             @RequestParam(required = false) List<String> categories,
 
+            @Parameter(description = "Category ID filter. If provided, includes the category and all its children.")
+            @RequestParam(required = false) Long categoryId,
+
             @ParameterObject
             @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable
     ) {
-        return postService.list(pageable, keyword, categories);
+        return postService.list(pageable, keyword, searchIn, categories, categoryId);
     }
 
     @Operation(

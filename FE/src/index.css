@@ -208,12 +208,16 @@ html[data-theme="dark"] .app-layout .file-action-label {
 
 /* MD 에디터/프리뷰가 브라우저 테마를 따르도록 배경·텍스트 통일 */
 [data-color-mode="light"] .markdown-preview,
-[data-color-mode="light"] .wmde-markdown {
+[data-color-mode="light"] .wmde-markdown,
+[data-color-mode="light"] .w-md-editor {
   --color-canvas-default: var(--app-bg);
   --color-fg-default: var(--app-text);
+  --color-border-default: var(--app-border);
 }
 [data-color-mode="dark"] .markdown-preview,
-[data-color-mode="dark"] .wmde-markdown {
+[data-color-mode="dark"] .wmde-markdown,
+[data-color-mode="dark"] .w-md-editor {
   --color-canvas-default: var(--app-bg);
   --color-fg-default: var(--app-text);
+  --color-border-default: var(--app-border);
 }
