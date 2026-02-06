@@ -1,19 +1,21 @@
-feat: dynamic category management with hierarchical structure and categoryId-based filtering
+feat: implement file attachments, soft delete, version management, and change history
 
 FE
-- CategoryManagePage: new category management page with CRUD, hierarchical move (up/down/in/out), inline editing, save/reset; buttons disabled by default, activate based on selection logic; input field flex layout
-- SideNav: API-based dynamic category display (fetchCategories), "전체" link added, hierarchical structure with indentation, categoryId-based navigation
-- PostListPage: categoryId-based filtering (replaces ApiCategory enum), API-based dynamic category loading, category filter buttons removed, page title shows selected category
-- api: fetchPosts categoryId param; fetchCategories error handling; bulkUpdateCategories JSON error parsing; CategoryItem/CategoryBulkUpdateItem types
-- router: /categories/manage route for CategoryManagePage
+- PostEditorPage: file drag-and-drop attachments, UI overflow fixes, notice checkbox positioning, require explicit category selection
+- PostDetailPage: attachment display with download links, separate view count increment, robust attachment JSON parsing
+- PostListPage: attachment icon display, view count column
+- PostVersionHistoryPage: new page with table/list view toggle, search by title/ID, change type filter (전체/생성/수정/삭제), version content preview
+- SideNav: version history menu link
+- api: attachment and version history APIs, deletePost, getAllChangeHistory
 
 BE
-- Category: new entity with parentId, depth, sortOrder; column names explicit (parent_id, depth, sort_order); index on sort_order
-- CategoryController: list/create/update/bulkUpdate endpoints; CategoryResponse with parentLabel
-- CategoryService: list with parentLabels map; create auto-generates code/depth/sortOrder; bulkUpdate with circular reference checks; getPostCategoriesByCategoryId for PostCategory mapping
-- CategoryRepository: findByParentIdOrderBySortOrderAsc, findByParentIdIsNullOrderBySortOrderAsc
-- CategoryDataLoader: auto-create/repair "신입 교육 자료" and children on startup; ensures data integrity
-- PostService: categoryId param support; getPostCategoriesByCategoryId maps Category code to PostCategory; empty list returns empty PageResponse (prevents showing all posts for non-mappable categories)
-- PostController: categoryId query param
-- GlobalExceptionHandler: include error message in response for debugging
-- migration_add_depth_column.sql: migration script for adding depth column
+- Post: deleted field (soft delete), currentVersionId field, markAsDeleted/restore methods
+- PostVersion: new entity for version tracking (postId, versionNumber, contentMd, createdBy, createdAt)
+- PostVersionRepository: version query methods, findAllByOrderByCreatedAtDesc
+- PostService: savePostVersion (auto-version on content changes), getVersions/getVersion, delete (soft delete), listDeleted, getAllChangeHistory (unified history with changeType filter), deleted=false filtering in all queries
+- PostController: POST /{id}/attachments, DELETE /{id}, GET /{id}/versions, GET /deleted, GET /changes/history
+- PostRepository: deleted=true query methods, deleted=false added to existing queries
+- AttachmentStorage: new service for file attachments
+- PostSchemaMigration: deleted column, current_version_id column, post_version table
+- ChangeHistoryItem: new DTO with PostCategory enum to String conversion fix
+- PostVersionResponse: new DTO for version APIs

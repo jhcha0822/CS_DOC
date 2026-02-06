@@ -4,6 +4,7 @@ import java.util.Map;
 
 public record CategoryResponse(
         Long id,
+        String code,
         String label,
         Long parentId,
         String parentLabel,
@@ -22,6 +23,7 @@ public record CategoryResponse(
         }
         return new CategoryResponse(
                 c.getId(),
+                c.getCode(),
                 c.getLabel(),
                 parentId,
                 parentLabel,

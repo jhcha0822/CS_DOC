@@ -48,14 +48,16 @@ export default function SideNav() {
 
     const categoryIdParam = catParam ? parseInt(catParam, 10) : null;
 
+    /** 전체 선택(cat 없음) 시 모두 하이라이트. 상위 선택 시 해당 상위+하위, 하위 선택 시 해당 하위+상위 하이라이트 */
     const isSelected = (cat: CategoryItem | null) => {
         if (!cat) return categoryIdParam === null;
+        if (categoryIdParam === null) return true;
         if (cat.depth === 0) {
             const children = getChildrenOf(cat.id);
             const childIds = children.map((c) => c.id);
-            return categoryIdParam === cat.id || (categoryIdParam != null && childIds.includes(categoryIdParam));
+            return categoryIdParam === cat.id || childIds.includes(categoryIdParam);
         }
-        return categoryIdParam === cat.id;
+        return categoryIdParam === cat.id || categoryIdParam === cat.parentId;
     };
 
     if (loading) {
@@ -66,7 +68,7 @@ export default function SideNav() {
         <div>
             <NavLink
                 to="/posts"
-                style={({ isActive }) => ({
+                style={() => ({
                     display: "block",
                     padding: "10px 12px",
                     borderRadius: 10,
@@ -74,8 +76,8 @@ export default function SideNav() {
                     border: "1px solid #444",
                     textDecoration: "none",
                     color: "#111",
-                    background: isActive || catParam === null ? "#f0f0f0" : "transparent",
-                    fontWeight: isActive || catParam === null ? 800 : 600,
+                    background: catParam === null ? "#f0f0f0" : "#fff",
+                    fontWeight: catParam === null ? 800 : 600,
                 })}
             >
                 전체
@@ -88,7 +90,7 @@ export default function SideNav() {
                     <div key={parent.id}>
                         <NavLink
                             to={`/posts?cat=${parent.id}`}
-                            style={({ isActive }) => ({
+                            style={() => ({
                                 display: "block",
                                 padding: "10px 12px",
                                 borderRadius: 10,
@@ -96,8 +98,8 @@ export default function SideNav() {
                                 border: "1px solid #444",
                                 textDecoration: "none",
                                 color: "#111",
-                                background: isActive || isParentSelected ? "#f0f0f0" : "transparent",
-                                fontWeight: isActive || isParentSelected ? 800 : 600,
+                                background: isParentSelected ? "#f0f0f0" : "#fff",
+                                fontWeight: isParentSelected ? 800 : 600,
                             })}
                         >
                             {parent.label}
@@ -108,7 +110,7 @@ export default function SideNav() {
                                 <NavLink
                                     key={child.id}
                                     to={`/posts?cat=${child.id}`}
-                                    style={({ isActive }) => ({
+                                    style={() => ({
                                         display: "block",
                                         padding: "10px 12px",
                                         marginLeft: 20,
@@ -117,8 +119,8 @@ export default function SideNav() {
                                         border: "1px solid #444",
                                         textDecoration: "none",
                                         color: "#111",
-                                        background: isActive || isChildSelected ? "#f0f0f0" : "transparent",
-                                        fontWeight: isActive || isChildSelected ? 800 : 600,
+                                        background: isChildSelected ? "#f0f0f0" : "#fff",
+                                        fontWeight: isChildSelected ? 800 : 600,
                                     })}
                                 >
                                     {child.label}
@@ -187,11 +189,27 @@ export default function SideNav() {
                     textDecoration: "none",
                     color: "#111",
                     border: "1px solid #444",
-                    background: isActive ? "#f0f0f0" : "transparent",
+                    background: isActive ? "#f0f0f0" : "#fff",
                     fontWeight: isActive ? 800 : 600,
+                    marginBottom: 6,
                 })}
             >
                 카테고리 관리
+            </NavLink>
+            <NavLink
+                to="/posts/versions"
+                style={({ isActive }) => ({
+                    display: "block",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    textDecoration: "none",
+                    color: "#111",
+                    border: "1px solid #444",
+                    background: isActive ? "#f0f0f0" : "#fff",
+                    fontWeight: isActive ? 800 : 600,
+                })}
+            >
+                버전 이력
             </NavLink>
         </div>
     );

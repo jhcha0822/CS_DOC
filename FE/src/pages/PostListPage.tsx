@@ -364,30 +364,75 @@ export default function PostListPage() {
                             ) : (
                                 items.map((post, idx) => {
                                     const detailUrl = `/posts/${post.id}?${createSearchParams(listSearchParams).toString()}`;
+                                    const isNotice = post.isNotice === true;
                                     return (
                                         <tr
                                             key={post.id}
                                             style={{
                                                 borderBottom: "1px solid #ddd",
-                                                background: idx % 2 === 0 ? "#fff" : "#fafafa",
+                                                background: isNotice ? "#fee2e2" : (idx % 2 === 0 ? "#fff" : "#fafafa"),
+                                                fontWeight: isNotice ? 700 : 400,
                                             }}
                                         >
-                                            <td style={{ padding: "12px 14px" }}>{labelOfApiCategory(post.category)}</td>
+                                            <td style={{ padding: "12px 14px" }}>
+                                                {isNotice 
+                                                    ? "공지사항"
+                                                    : (post.categoryId 
+                                                        ? (categories.find(c => c.id === post.categoryId)?.label ?? "기타")
+                                                        : labelOfApiCategory(post.category))}
+                                            </td>
                                             <td style={{ padding: "12px 14px" }}>
                                                 <Link
                                                     to={detailUrl}
                                                     style={{
                                                         color: "var(--app-text)",
                                                         textDecoration: "none",
-                                                        fontWeight: 600,
+                                                        fontWeight: isNotice ? 700 : 600,
                                                     }}
                                                 >
                                                     {post.title}
                                                 </Link>
                                             </td>
                                             <td style={{ padding: "12px 14px" }}>{formatKST(post.createdAt)}</td>
-                                            <td style={{ padding: "12px 14px", textAlign: "center" }}>-</td>
-                                            <td style={{ padding: "12px 14px", textAlign: "center" }}>-</td>
+                                            <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                                                {post.viewCount ?? 0}
+                                            </td>
+                                            <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                                                {(() => {
+                                                    try {
+                                                        if (post.attachments && post.attachments !== "null" && post.attachments.trim() !== "" && post.attachments.trim() !== "[]") {
+                                                            let parsed: string[] = [];
+                                                            try {
+                                                                parsed = JSON.parse(post.attachments);
+                                                            } catch (parseError) {
+                                                                // JSON 파싱 실패 시 문자열로 처리
+                                                                const trimmed = post.attachments.trim();
+                                                                if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+                                                                    parsed = [trimmed.slice(1, -1)];
+                                                                } else if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+                                                                    const content = trimmed.slice(1, -1).trim();
+                                                                    if (content) {
+                                                                        parsed = content.split(",").map(s => {
+                                                                            const trimmed = s.trim();
+                                                                            return trimmed.startsWith("\"") && trimmed.endsWith("\"") 
+                                                                                ? trimmed.slice(1, -1) 
+                                                                                : trimmed;
+                                                                        });
+                                                                    }
+                                                                } else {
+                                                                    parsed = [trimmed];
+                                                                }
+                                                            }
+                                                            if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(url => url && url.trim() !== "")) {
+                                                                return <span style={{ fontSize: 16 }}>📎</span>;
+                                                            }
+                                                        }
+                                                    } catch (e) {
+                                                        console.error("[PostList] Error parsing attachments:", e, post.attachments);
+                                                    }
+                                                    return "-";
+                                                })()}
+                                            </td>
                                         </tr>
                                     );
                                 })

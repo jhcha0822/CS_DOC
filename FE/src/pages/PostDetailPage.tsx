@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link, createSearchParams, useParams, useSearchParams } from "react-router-dom";
-import { fetchPost, type PostDetail } from "../lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, createSearchParams, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { fetchPost, fetchCategories, incrementViewCount, deletePost, type PostDetail, type CategoryItem } from "../lib/api";
 import { ApiError } from "../lib/api";
 import { labelOfApiCategory } from "../lib/categories";
 import MarkdownPreview from "@uiw/react-markdown-preview";
@@ -15,9 +15,17 @@ function formatKST(iso: string) {
     )}:${pad(d.getMinutes())}`;
 }
 
+function getApiBase(): string {
+    const env = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE?.toString?.();
+    if (env) return env;
+    if (typeof window !== "undefined") return window.location.origin;
+    return "http://localhost:8080";
+}
+
 export default function PostDetailPage() {
     const { id } = useParams();
     const [sp] = useSearchParams();
+    const navigate = useNavigate();
     const catParam = sp.get("cat");
     const qParam = sp.get("q");
 
@@ -26,6 +34,15 @@ export default function PostDetailPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [post, setPost] = useState<PostDetail | null>(null);
+    const [categories, setCategories] = useState<CategoryItem[]>([]);
+    const [deleting, setDeleting] = useState(false);
+    const viewCountIncrementedRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        fetchCategories()
+            .then((list) => setCategories(list ?? []))
+            .catch(() => setCategories([]));
+    }, []);
 
     const listSearchParams = useCallback(() => {
         const p: Record<string, string> = {};
@@ -37,8 +54,38 @@ export default function PostDetailPage() {
     const listUrl = `/posts?${createSearchParams(listSearchParams()).toString()}`;
     const editUrl = `/posts/${postId}/edit?${createSearchParams(listSearchParams()).toString()}`;
 
+    const handleDelete = useCallback(async () => {
+        if (!window.confirm("정말 이 게시글을 삭제하시겠습니까?\n삭제된 게시글은 목록에서 보이지 않지만 데이터베이스에는 유지되어 추후 복구할 수 있습니다.")) {
+            return;
+        }
+
+        setDeleting(true);
+        setError(null);
+        try {
+            await deletePost(postId);
+            // 삭제 성공 시 목록으로 이동
+            navigate(listUrl);
+        } catch (e) {
+            const msg =
+                e instanceof ApiError
+                    ? e.message
+                    : e instanceof Error
+                      ? e.message
+                      : "삭제에 실패했습니다.";
+            setError(msg);
+        } finally {
+            setDeleting(false);
+        }
+    }, [postId, listUrl, navigate]);
+
     useEffect(() => {
         let cancelled = false;
+        let viewCountIncremented = false;
+        
+        // postId가 변경되면 이전 조회수 증가 추적 초기화
+        if (viewCountIncrementedRef.current !== postId) {
+            viewCountIncrementedRef.current = null;
+        }
 
         async function run() {
             if (!Number.isFinite(postId)) {
@@ -51,9 +98,29 @@ export default function PostDetailPage() {
             setError(null);
 
             try {
+                // 게시글 데이터 가져오기
                 const data = await fetchPost(postId);
                 if (cancelled) return;
+                
                 setPost(data);
+                
+                // 조회수 증가는 별도로 호출 (한 번만, ref로 중복 방지)
+                if (!viewCountIncremented && viewCountIncrementedRef.current !== postId) {
+                    viewCountIncremented = true;
+                    viewCountIncrementedRef.current = postId;
+                    // 조회수 증가는 백그라운드에서 실행 (에러가 발생해도 UI에 영향 없음)
+                    incrementViewCount(postId)
+                        .then(() => {
+                            // 성공 시 ref 유지
+                        })
+                        .catch((err) => {
+                            console.warn("Failed to increment view count:", err);
+                            // 실패 시 다시 시도할 수 있도록 초기화
+                            if (viewCountIncrementedRef.current === postId) {
+                                viewCountIncrementedRef.current = null;
+                            }
+                        });
+                }
             } catch (e) {
                 if (cancelled) return;
                 const msg =
@@ -96,6 +163,27 @@ export default function PostDetailPage() {
                 </div>
 
                 <div className="header-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
+                    <button
+                        onClick={handleDelete}
+                        disabled={deleting}
+                        style={{
+                            width: 90,
+                            minHeight: 42,
+                            padding: "10px 14px",
+                            borderRadius: 10,
+                            border: "1px solid #dc2626",
+                            color: "#fff",
+                            background: deleting ? "#999" : "#dc2626",
+                            fontWeight: 800,
+                            boxSizing: "border-box",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: deleting ? "not-allowed" : "pointer",
+                        }}
+                    >
+                        {deleting ? "삭제 중..." : "삭제"}
+                    </button>
                     <Link
                         to={editUrl}
                         style={{
@@ -166,15 +254,104 @@ export default function PostDetailPage() {
 
                 {!loading && !error && post && (
                     <div>
-                        <div style={{ fontWeight: 900, fontSize: 18 }}>{post.title}</div>
-                        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-                            {labelOfApiCategory(post.category)} · 생성{" "}
-                            {formatKST(post.createdAt)} · 수정{" "}
-                            {formatKST(post.updatedAt)}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 900, fontSize: 18 }}>{post.title}</div>
+                            </div>
+                        </div>
+                        <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+                            <div style={{ fontSize: 12, opacity: 0.8 }}>
+                                {post.categoryId 
+                                    ? (categories.find(c => c.id === post.categoryId)?.label ?? "기타")
+                                    : labelOfApiCategory(post.category)}
+                            </div>
+                            <div style={{ textAlign: "right", fontSize: 12, opacity: 0.8 }}>
+                                생성 {formatKST(post.createdAt)}<br />
+                                수정 {formatKST(post.updatedAt)}<br />
+                                <div style={{ marginTop: 4 }}>
+                                    조회 {post.viewCount ?? 0}
+                                </div>
+                            </div>
                         </div>
                         <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
                             id: {post.id}
                         </div>
+
+                        {(() => {
+                            try {
+                                if (post.attachments && post.attachments !== "null" && post.attachments.trim() !== "" && post.attachments.trim() !== "[]") {
+                                    console.log("[PostDetail] Raw attachments:", post.attachments);
+                                    let parsed: string[] = [];
+                                    try {
+                                        parsed = JSON.parse(post.attachments);
+                                    } catch (parseError) {
+                                        // JSON 파싱 실패 시 문자열로 처리 (단일 URL인 경우)
+                                        const trimmed = post.attachments.trim();
+                                        if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+                                            parsed = [trimmed.slice(1, -1)];
+                                        } else if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+                                            // 배열 형태이지만 JSON 파싱 실패 시 수동 파싱 시도
+                                            const content = trimmed.slice(1, -1).trim();
+                                            if (content) {
+                                                parsed = content.split(",").map(s => {
+                                                    const trimmed = s.trim();
+                                                    return trimmed.startsWith("\"") && trimmed.endsWith("\"") 
+                                                        ? trimmed.slice(1, -1) 
+                                                        : trimmed;
+                                                });
+                                            }
+                                        } else {
+                                            parsed = [trimmed];
+                                        }
+                                    }
+                                    console.log("[PostDetail] Parsed attachments:", parsed);
+                                    if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(url => url && url.trim() !== "")) {
+                                        const validUrls = parsed.filter(url => url && url.trim() !== "");
+                                        if (validUrls.length > 0) {
+                                            return (
+                                                <div style={{ marginTop: 16, padding: 12, background: "#f5f5f5", borderRadius: 8, border: "1px solid #ddd" }}>
+                                                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>첨부파일 ({validUrls.length}개)</div>
+                                                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                                        {validUrls.map((url: string, idx: number) => {
+                                                            const cleanUrl = url.trim();
+                                                            const fileName = cleanUrl.split("/").pop() || `첨부파일${idx + 1}`;
+                                                            const fullUrl = cleanUrl.startsWith("http") ? cleanUrl : `${getApiBase()}${cleanUrl}`;
+                                                            return (
+                                                                <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                                                    <span style={{ fontSize: 16 }}>📎</span>
+                                                                    <a
+                                                                        href={fullUrl}
+                                                                        download={fileName}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        style={{
+                                                                            color: "var(--app-link)",
+                                                                            textDecoration: "none",
+                                                                            fontSize: 13,
+                                                                        }}
+                                                                        onMouseEnter={(e) => {
+                                                                            e.currentTarget.style.textDecoration = "underline";
+                                                                        }}
+                                                                        onMouseLeave={(e) => {
+                                                                            e.currentTarget.style.textDecoration = "none";
+                                                                        }}
+                                                                    >
+                                                                        {fileName}
+                                                                    </a>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                console.error("[PostDetail] Error parsing attachments:", e);
+                            }
+                            return null;
+                        })()}
 
                         <div
                             className="markdown-preview"

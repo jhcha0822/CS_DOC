@@ -1,5 +1,3 @@
-import type { ApiCategory } from "./categories";
-
 function getApiBase(): string {
     const env = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE?.toString?.();
     if (env) return env;
@@ -11,7 +9,11 @@ const API_BASE = getApiBase();
 export type PostListItem = {
     id: number;
     title: string;
-    category: ApiCategory;
+    category: string | null; // Deprecated: 기존 데이터 호환성을 위해 유지
+    categoryId: number | null;
+    isNotice: boolean | null;
+    viewCount: number | null;
+    attachments: string | null; // JSON array of attachment URLs
     createdAt: string;
     updatedAt: string;
 };
@@ -29,7 +31,11 @@ export type PostListResponse = {
 export type PostDetail = {
     id: number;
     title: string;
-    category: ApiCategory;
+    category: string | null; // Deprecated: 기존 데이터 호환성을 위해 유지
+    categoryId: number | null;
+    isNotice: boolean | null;
+    viewCount: number | null;
+    attachments: string | null; // JSON array of attachment URLs
     createdAt: string;
     updatedAt: string;
     contentMd?: string;
@@ -86,10 +92,9 @@ export type SearchIn = "title" | "content" | "author" | "all";
 
 /**
  * 목록 조회
- * - BE: keyword(검색어), searchIn(검색범위), categories(반복 파라미터), categoryId(카테고리 ID), page(0-based), size
+ * - BE: keyword(검색어), searchIn(검색범위), categoryId(카테고리 ID), page(0-based), size
  */
 export async function fetchPosts(params?: {
-    categories?: ApiCategory[];
     q?: string;
     searchIn?: SearchIn;
     categoryId?: number;
@@ -100,8 +105,6 @@ export async function fetchPosts(params?: {
 
     if (params?.categoryId != null) {
         url.searchParams.set("categoryId", String(params.categoryId));
-    } else if (params?.categories?.length) {
-        params.categories.forEach((c) => url.searchParams.append("categories", c));
     }
 
     if (params?.q?.trim()) {
@@ -130,6 +133,24 @@ export async function fetchPosts(params?: {
 export async function fetchPost(id: number): Promise<PostDetail> {
     const url = new URL(`/api/posts/${id}`, API_BASE);
     return fetchJson<PostDetail>(url.toString());
+}
+
+/**
+ * 조회수 증가 (별도 호출)
+ */
+export async function incrementViewCount(id: number): Promise<void> {
+    const url = new URL(`/api/posts/${id}/view`, API_BASE);
+    const res = await fetch(url.toString(), {
+        method: "POST",
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
 }
 
 /**
@@ -164,14 +185,18 @@ export async function fetchPostContent(id: number): Promise<PostContentResponse>
 
 export type PostCreatePayload = {
     title: string;
-    category?: ApiCategory;
+    categoryId: number;
     contentMd: string;
+    isNotice?: boolean;
+    attachments?: File[];
 };
 
 export type PostPatchPayload = {
     title?: string;
-    category?: ApiCategory;
+    categoryId?: number;
     markdown?: string;
+    isNotice?: boolean;
+    attachments?: File[];
 };
 
 export type PostResponse = {
@@ -186,11 +211,14 @@ export type PostResponse = {
  */
 export async function createPost(payload: PostCreatePayload): Promise<PostResponse> {
     const url = new URL("/api/posts", API_BASE);
-    const body = {
+    const body: Record<string, unknown> = {
         title: payload.title.trim(),
-        category: payload.category ?? "TRAINING",
+        categoryId: payload.categoryId,
         contentMd: payload.contentMd,
     };
+    if (payload.isNotice !== undefined) {
+        body.isNotice = payload.isNotice;
+    }
     const res = await fetch(url.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -204,7 +232,167 @@ export async function createPost(payload: PostCreatePayload): Promise<PostRespon
             text
         );
     }
-    return res.json() as Promise<PostResponse>;
+    const created = await res.json() as PostResponse;
+    
+    // 첨부파일이 있으면 별도로 업로드
+    if (payload.attachments && payload.attachments.length > 0) {
+        await addAttachmentsToPost(created.id, payload.attachments);
+    }
+    
+    return created;
+}
+
+/**
+ * 게시글에 첨부파일 추가
+ */
+export async function addAttachmentsToPost(id: number, attachments: File[]): Promise<void> {
+    const url = new URL(`/api/posts/${id}/attachments`, API_BASE);
+    const form = new FormData();
+    attachments.forEach((att) => form.append("attachments", att));
+
+    const res = await fetch(url.toString(), {
+        method: "POST",
+        body: form,
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+}
+
+/**
+ * 게시글 삭제 (soft delete)
+ */
+export async function deletePost(id: number): Promise<void> {
+    const url = new URL(`/api/posts/${id}`, API_BASE);
+    const res = await fetch(url.toString(), {
+        method: "DELETE",
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+}
+
+export type PostVersion = {
+    id: number;
+    postId: number;
+    versionNumber: number;
+    contentMd: string;
+    createdBy: string | null;
+    createdAt: string;
+};
+
+/**
+ * 게시글의 모든 버전 조회
+ */
+export async function getPostVersions(postId: number): Promise<PostVersion[]> {
+    const url = new URL(`/api/posts/${postId}/versions`, API_BASE);
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return res.json();
+}
+
+/**
+ * 특정 버전 조회
+ */
+export async function getPostVersion(postId: number, versionNumber: number): Promise<PostVersion> {
+    const url = new URL(`/api/posts/${postId}/versions/${versionNumber}`, API_BASE);
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return res.json();
+}
+
+/**
+ * 삭제된 게시글 목록 조회
+ */
+export async function listDeletedPosts(keyword?: string, postId?: number, page?: number, size?: number): Promise<PostListResponse> {
+    const url = new URL("/api/posts/deleted", API_BASE);
+    if (keyword) url.searchParams.set("keyword", keyword);
+    if (postId) url.searchParams.set("postId", postId.toString());
+    if (page !== undefined) url.searchParams.set("page", page.toString());
+    if (size !== undefined) url.searchParams.set("size", size.toString());
+    
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return res.json();
+}
+
+/**
+ * 삭제 이력 조회
+ */
+export async function getDeletionHistory(): Promise<PostListItem[]> {
+    const url = new URL("/api/posts/deleted/history", API_BASE);
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return res.json();
+}
+
+export type ChangeHistoryItem = {
+    postId: number;
+    postTitle: string;
+    category: string | null;
+    categoryId: number | null;
+    changeType: "생성" | "수정" | "삭제";
+    changeDate: string;
+    changedBy: string | null;
+    versionNumber: number | null;
+    attachments: string | null;
+};
+
+/**
+ * 전체 변경 이력 조회
+ */
+export async function getAllChangeHistory(changeType?: "생성" | "수정" | "삭제"): Promise<ChangeHistoryItem[]> {
+    const url = new URL("/api/posts/changes/history", API_BASE);
+    if (changeType) url.searchParams.set("changeType", changeType);
+    
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return res.json();
 }
 
 /**
@@ -217,8 +405,9 @@ export async function patchPost(
     const url = new URL(`/api/posts/${id}`, API_BASE);
     const body: Record<string, unknown> = {};
     if (payload.title !== undefined) body.title = payload.title.trim();
-    if (payload.category !== undefined) body.category = payload.category;
+    if (payload.categoryId !== undefined) body.categoryId = payload.categoryId;
     if (payload.markdown !== undefined) body.markdown = payload.markdown;
+    if (payload.isNotice !== undefined) body.isNotice = payload.isNotice;
     const res = await fetch(url.toString(), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -232,7 +421,14 @@ export async function patchPost(
             text
         );
     }
-    return res.json() as Promise<PostResponse>;
+    const updated = await res.json() as PostResponse;
+    
+    // 첨부파일이 있으면 별도로 추가
+    if (payload.attachments && payload.attachments.length > 0) {
+        await addAttachmentsToPost(id, payload.attachments);
+    }
+    
+    return updated;
 }
 
 /**
@@ -240,13 +436,24 @@ export async function patchPost(
  */
 export async function createPostByUpload(
     file: File,
-    options?: { title?: string; category?: ApiCategory }
+    options?: { title?: string; categoryId: number; isNotice?: boolean; images?: File[]; attachments?: File[] }
 ): Promise<PostResponse> {
     const url = new URL("/api/posts/upload", API_BASE);
     const form = new FormData();
     form.append("file", file);
     if (options?.title?.trim()) form.append("title", options.title.trim());
-    if (options?.category) form.append("category", options.category);
+    form.append("categoryId", String(options.categoryId));
+    if (options?.isNotice !== undefined) {
+        form.append("isNotice", String(options.isNotice));
+    }
+    
+    if (options?.images) {
+        options.images.forEach((img) => form.append("images", img));
+    }
+    
+    if (options?.attachments) {
+        options.attachments.forEach((att) => form.append("attachments", att));
+    }
 
     const res = await fetch(url.toString(), {
         method: "POST",
@@ -269,12 +476,18 @@ export async function createPostByUpload(
 export async function updateContentByUpload(
     id: number,
     file: File,
-    options?: { title?: string }
+    options?: { title?: string; images?: File[]; attachments?: File[] }
 ): Promise<PostResponse> {
     const url = new URL(`/api/posts/${id}/content/upload`, API_BASE);
     const form = new FormData();
     form.append("file", file);
     if (options?.title?.trim()) form.append("title", options.title.trim());
+    if (options?.images) {
+        options.images.forEach((img) => form.append("images", img));
+    }
+    if (options?.attachments) {
+        options.attachments.forEach((att) => form.append("attachments", att));
+    }
 
     const res = await fetch(url.toString(), {
         method: "PUT",
@@ -295,6 +508,7 @@ export async function updateContentByUpload(
 
 export type CategoryItem = {
     id: number;
+    code: string | null;
     label: string;
     parentId: number | null;
     parentLabel: string | null;

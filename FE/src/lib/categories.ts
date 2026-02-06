@@ -55,6 +55,19 @@ export function isApiCategory(v: unknown): v is ApiCategory {
 }
 
 /**
+ * BE codeToPostCategory와 동일: code 문자열에 SYSTEM/INCIDENT/TRAINING 포함 여부로 ApiCategory 반환.
+ * (예: CAT_SYSTEM → SYSTEM, code 없음 → TRAINING)
+ */
+export function categoryCodeToApiCategory(code: string | null | undefined): ApiCategory {
+    if (code == null || code === "") return "TRAINING";
+    const upper = code.toUpperCase();
+    if (upper.includes("SYSTEM")) return "SYSTEM";
+    if (upper.includes("INCIDENT")) return "INCIDENT";
+    if (upper.includes("TRAINING")) return "TRAINING";
+    return "TRAINING";
+}
+
+/**
  * URL 쿼리 cat 값 → BE categories 배열
  * cat=INCIDENT → [INCIDENT], 없거나 비유효 → 전체 [SYSTEM, INCIDENT, TRAINING]
  */
@@ -74,7 +87,6 @@ export function getCurrentCategoryKeyFromCatParam(catParam: string | null): Cate
     }
     return DEFAULT_CATEGORY;
 }
-
 /**
  * 화면 카테고리(key) -> BE category 목록
  * - newbie: 전체

@@ -40,6 +40,13 @@ public class PostContentStorage {
         write(relative, normalizeMarkdown(markdown));
     }
 
+    /** 기존 게시글(id) 본문 경로가 비었을 때 사용. posts/{id}.md에 생성·덮어쓰기 (saveNew와 달리 기존 파일 있어도 덮어씀) */
+    public String writeOrOverwriteForExistingPost(String markdown, Long postId) {
+        String relative = POSTS_DIR + "/" + postId + ".md";
+        overwrite(relative, markdown);
+        return relative;
+    }
+
     public String read(String relativePath) {
         Path absolute = resolveSafe(relativePath);
         try {

@@ -44,3 +44,5 @@ springdoc:
 logging:
   level:
     org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping: TRACE
+    com.fasoo.cs_doc.post.controller.PostController: INFO
+    com.fasoo.cs_doc.post.service.PostService: DEBUG

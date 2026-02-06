@@ -48,6 +48,16 @@ public class PostController {
         return postService.getDetail(id);
     }
 
+    @Operation(
+            summary = "Increment view count",
+            description = "Increment view count for a post. Should be called separately from get detail."
+    )
+    @PostMapping("/{id}/view")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void incrementViewCount(@PathVariable Long id) {
+        postService.incrementViewCount(id);
+    }
+
     /**
      * 예전 방식(전체 PUT 수정). 현재는 PATCH를 표준으로 쓰는 방향이면 Swagger에서 숨김 처리.
      * 필요해지면 hidden=false 로 돌리면 됨.
@@ -88,31 +98,35 @@ public class PostController {
 
     @Operation(
             summary = "Create post by uploading .md file",
-            description = "Upload a markdown file and create a post. If title is omitted, service may derive or set default title. category: SYSTEM, INCIDENT, TRAINING."
+            description = "Upload a markdown file and create a post. If title is omitted, service may derive or set default title. categoryId is required. Optionally upload image files referenced in markdown."
     )
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PostResponse createByUpload(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "title", required = false) String title,
-            @RequestParam(value = "category", required = false) String category
+            @RequestParam(value = "categoryId") Long categoryId,
+            @RequestParam(value = "isNotice", required = false) Boolean isNotice,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images,
+            @RequestParam(value = "attachments", required = false) List<MultipartFile> attachments
     ) {
-        var cat = (category != null && !category.isBlank())
-                ? com.fasoo.cs_doc.post.domain.PostCategory.valueOf(category.toUpperCase())
-                : null;
-        return postService.createByUpload(file, title, cat);
+        org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PostController.class);
+        log.info("createByUpload received - categoryId={}, title={}, isNotice={}", categoryId, title, isNotice);
+        return postService.createByUpload(file, title, null, categoryId, isNotice, images, attachments);
     }
 
     @Operation(
             summary = "Update post content by uploading .md file",
-            description = "Upload a markdown file to overwrite existing content. Title is optional."
+            description = "Upload a markdown file to overwrite existing content. Title is optional. Optionally upload image files referenced in markdown."
     )
     @PutMapping(value = "/{id}/content/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PostResponse updateContentByUpload(
             @PathVariable Long id,
             @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "title", required = false) String title
+            @RequestParam(value = "title", required = false) String title,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images,
+            @RequestParam(value = "attachments", required = false) List<MultipartFile> attachments
     ) {
-        return postService.updateByUpload(id, file, title);
+        return postService.updateByUpload(id, file, title, images, attachments);
     }
 
     @Operation(
@@ -137,6 +151,18 @@ public class PostController {
     }
 
     @Operation(
+            summary = "Add attachments to post",
+            description = "Add attachment files to an existing post."
+    )
+    @PostMapping(value = "/{id}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public PostResponse addAttachments(
+            @PathVariable Long id,
+            @RequestParam("attachments") List<MultipartFile> attachments
+    ) {
+        return postService.addAttachments(id, attachments);
+    }
+
+    @Operation(
             summary = "Delete post",
             description = "Delete the post row and its markdown file."
     )
@@ -144,5 +170,68 @@ public class PostController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         postService.delete(id);
+    }
+
+    @Operation(
+            summary = "Get post versions",
+            description = "Get all versions of a post (including deleted posts)."
+    )
+    @GetMapping("/{id}/versions")
+    public List<com.fasoo.cs_doc.post.dto.PostVersionResponse> getVersions(@PathVariable Long id) {
+        return postService.getVersions(id).stream()
+                .map(com.fasoo.cs_doc.post.dto.PostVersionResponse::from)
+                .toList();
+    }
+
+    @Operation(
+            summary = "Get specific version",
+            description = "Get a specific version of a post (including deleted posts)."
+    )
+    @GetMapping("/{id}/versions/{versionNumber}")
+    public com.fasoo.cs_doc.post.dto.PostVersionResponse getVersion(
+            @PathVariable Long id,
+            @PathVariable Integer versionNumber
+    ) {
+        return com.fasoo.cs_doc.post.dto.PostVersionResponse.from(postService.getVersion(id, versionNumber));
+    }
+
+    @Operation(
+            summary = "List deleted posts",
+            description = "List deleted posts for version history page. Can search by keyword or post ID."
+    )
+    @GetMapping("/deleted")
+    public PageResponse<PostListItemResponse> listDeleted(
+            @Parameter(description = "Search keyword (title)")
+            @RequestParam(required = false) String keyword,
+            
+            @Parameter(description = "Post ID filter")
+            @RequestParam(required = false) Long postId,
+            
+            @ParameterObject
+            @PageableDefault(size = 20, sort = "updatedAt", direction = Sort.Direction.DESC)
+            Pageable pageable
+    ) {
+        return postService.listDeleted(pageable, keyword, postId);
+    }
+
+    @Operation(
+            summary = "Get deletion history",
+            description = "Get all deleted posts ordered by deletion time (newest first)."
+    )
+    @GetMapping("/deleted/history")
+    public List<PostListItemResponse> getDeletionHistory() {
+        return postService.getDeletionHistory();
+    }
+
+    @Operation(
+            summary = "Get all change history",
+            description = "Get all change history (create, update, delete) across all posts. Can filter by change type."
+    )
+    @GetMapping("/changes/history")
+    public List<com.fasoo.cs_doc.post.dto.ChangeHistoryItem> getAllChangeHistory(
+            @Parameter(description = "Change type filter: null(전체), 생성, 수정, 삭제")
+            @RequestParam(required = false) String changeType
+    ) {
+        return postService.getAllChangeHistory(changeType);
     }
 }

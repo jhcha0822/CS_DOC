@@ -30,8 +30,30 @@ public class Post {
     private String contentMdPath;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 32)
-    private PostCategory category;
+    @Column(nullable = true, length = 32)
+    private PostCategory category; // Deprecated: 기존 데이터 호환성을 위해 유지하되, 새로 생성되는 게시글에는 사용하지 않음
+
+    @Column(name = "category_id", nullable = false)
+    private Long categoryId;
+
+    @Column(name = "is_notice", nullable = false)
+    private Boolean isNotice = false;
+
+    @Column(name = "view_count", nullable = false)
+    private Long viewCount = 0L;
+
+    @Column(name = "attachments", nullable = true, length = 2000)
+    private String attachments; // JSON array of attachment file paths
+
+    @Column(name = "deleted", nullable = false)
+    private Boolean deleted = false; // Soft delete flag
+
+    /**
+     * 현재 버전 ID (PostVersion 테이블 참조)
+     * 게시글 내용이 변경될 때마다 새로운 버전이 생성되고 이 필드가 업데이트됩니다.
+     */
+    @Column(name = "current_version_id", nullable = true)
+    private Long currentVersionId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -62,6 +84,12 @@ public class Post {
     public String getTitle() { return title; }
     public String getContentMdPath() { return contentMdPath; }
     public PostCategory getCategory() { return category; }
+    public Long getCategoryId() { return categoryId; }
+    public Boolean getIsNotice() { return isNotice != null ? isNotice : false; }
+    public Long getViewCount() { return viewCount != null ? viewCount : 0L; }
+    public String getAttachments() { return attachments; }
+    public Boolean getDeleted() { return deleted != null ? deleted : false; }
+    public Long getCurrentVersionId() { return currentVersionId; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
 
@@ -99,10 +127,42 @@ public class Post {
         this.contentMdPath = trimmed;
     }
 
+    /**
+     * @deprecated categoryId만 사용하세요. 기존 데이터 호환성을 위해 유지됨.
+     */
+    @Deprecated
     public void changeCategory(PostCategory category) {
-        if (category == null) {
-            throw new IllegalArgumentException("category must not be null");
+        this.category = category; // null 허용 (더 이상 사용하지 않음)
+    }
+
+    public void changeCategoryId(Long categoryId) {
+        if (categoryId == null) {
+            throw new IllegalArgumentException("categoryId must not be null");
         }
-        this.category = category;
+        this.categoryId = categoryId;
+    }
+
+    public void changeIsNotice(Boolean isNotice) {
+        this.isNotice = isNotice != null ? isNotice : false;
+    }
+
+    public void incrementViewCount() {
+        this.viewCount = (this.viewCount == null ? 0L : this.viewCount) + 1L;
+    }
+
+    public void changeAttachments(String attachments) {
+        this.attachments = attachments; // null 허용
+    }
+
+    public void markAsDeleted() {
+        this.deleted = true;
+    }
+
+    public void restore() {
+        this.deleted = false;
+    }
+
+    public void changeCurrentVersionId(Long currentVersionId) {
+        this.currentVersionId = currentVersionId;
     }
 }

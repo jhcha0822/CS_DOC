@@ -7,8 +7,12 @@ import java.time.LocalDateTime;
 public record PostDetailResponse(
         Long id,
         String title,
-        PostCategory category,
+        PostCategory category, // Deprecated: 기존 데이터 호환성을 위해 유지
+        Long categoryId,
+        Boolean isNotice,
         String contentMd,
+        Long viewCount,
+        String attachments, // JSON array of attachment URLs
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {}
