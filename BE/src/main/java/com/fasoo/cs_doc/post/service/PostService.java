@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,23 +55,32 @@ public class PostService {
 
     /**
      * 카테고리 ID와 그 하위 카테고리들의 ID 목록 반환 (카테고리 계층 구조 지원)
+     * findAll로 전체 카테고리 로드 후 parentId 기준으로 하위 ID를 수집하여 계층 구조를 정확히 반영
      */
     private List<Long> getCategoryIdsIncludingChildren(Long categoryId) {
-        Category category = categoryRepository.findById(categoryId)
+        categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new NotFoundException("Category", categoryId));
-        
-        List<Long> result = new ArrayList<>();
-        result.add(categoryId); // 자기 자신 포함
-        
-        // 직접 하위 카테고리들 추가
-        List<Category> children = categoryRepository.findByParentIdOrderBySortOrderAsc(categoryId);
-        for (Category child : children) {
-            result.add(child.getId());
-            // 재귀적으로 하위 카테고리의 하위 카테고리들도 추가
-            result.addAll(getCategoryIdsIncludingChildren(child.getId()));
+
+        List<Category> allCategories = categoryRepository.findAllByOrderBySortOrderAsc();
+        Map<Long, List<Category>> parentToChildren = new HashMap<>();
+        for (Category c : allCategories) {
+            Long pid = c.getParentId();
+            parentToChildren.computeIfAbsent(pid != null ? pid : -1L, k -> new ArrayList<>()).add(c);
         }
-        
+
+        List<Long> result = new ArrayList<>();
+        collectCategoryIdsRecursive(categoryId, parentToChildren, result);
         return result;
+    }
+
+    private void collectCategoryIdsRecursive(Long categoryId, Map<Long, List<Category>> parentToChildren, List<Long> result) {
+        result.add(categoryId);
+        List<Category> children = parentToChildren.getOrDefault(categoryId, List.of());
+        for (Category child : children) {
+            if (child.getId() != null) {
+                collectCategoryIdsRecursive(child.getId(), parentToChildren, result);
+            }
+        }
     }
 
     /**
@@ -154,39 +164,52 @@ public class PostService {
         }
         
         Page<Post> page;
-        List<Post> legacyPosts = new ArrayList<>(); // category_id가 null인 기존 게시글들
-        
+        List<Post> legacyPosts = new ArrayList<>();
+
         if (categoryId != null) {
             // categoryId가 있으면 해당 카테고리와 하위 카테고리들의 ID 목록 조회
             Category selectedCategory = categoryRepository.findById(categoryId)
                     .orElseThrow(() -> new NotFoundException("Category", categoryId));
             List<Long> targetCategoryIds = getCategoryIdsIncludingChildren(categoryId);
-            
-            // 선택된 카테고리의 code를 PostCategory enum으로 매핑 (기존 데이터 호환성)
-            PostCategory legacyCategory = categoryCodeToPostCategory(selectedCategory.getCode());
-            
-            // categoryId 기반으로 조회 (공지사항 제외, 카테고리별 조회 시에는 공지사항을 표시하지 않음, 삭제되지 않은 것만)
-            // 기존 데이터 호환성을 위해 더 많은 데이터를 조회 (페이징은 나중에 처리)
+            log.debug("PostService.list - categoryId={}, targetCategoryIds={} (총 {}개)", categoryId, targetCategoryIds, targetCategoryIds.size());
+
+            // 선택된 카테고리와 하위 카테고리들의 code를 PostCategory enum으로 매핑 (기존 데이터 호환성)
+            List<PostCategory> legacyCategories = new ArrayList<>();
+            PostCategory selectedLegacy = categoryCodeToPostCategory(selectedCategory.getCode());
+            if (selectedLegacy != null) {
+                legacyCategories.add(selectedLegacy);
+            }
+            List<Category> allCats = categoryRepository.findAllByOrderBySortOrderAsc();
+            for (Long cid : targetCategoryIds) {
+                allCats.stream()
+                        .filter(c -> cid.equals(c.getId()))
+                        .findFirst()
+                        .map(Category::getCode)
+                        .map(this::categoryCodeToPostCategory)
+                        .filter(java.util.Objects::nonNull)
+                        .filter(lc -> !legacyCategories.contains(lc))
+                        .ifPresent(legacyCategories::add);
+            }
+
+            // category_id 기반 + legacy category(enum) 별도 조회 후 병합
             Pageable largePageable = org.springframework.data.domain.PageRequest.of(0, 10000, pageable.getSort());
             if (kw == null || kw.isBlank()) {
                 page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdIn(targetCategoryIds, largePageable);
-                
-                // 기존 데이터 호환성: category_id가 null이지만 category(enum)이 일치하는 게시글도 조회
-                if (legacyCategory != null) {
-                    Page<Post> legacyPage = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategory(legacyCategory, largePageable);
-                    legacyPosts = legacyPage.getContent().stream()
-                            .filter(p -> p.getCategoryId() == null && !p.getDeleted()) // category_id가 null이고 삭제되지 않은 것만
+                for (PostCategory legacyCategory : legacyCategories) {
+                    List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategory(legacyCategory, largePageable)
+                            .getContent().stream()
+                            .filter(p -> p.getCategoryId() == null && !p.getDeleted())
                             .toList();
+                    legacyPosts.addAll(batch);
                 }
             } else {
                 page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(targetCategoryIds, kw, largePageable);
-                
-                // 기존 데이터 호환성: category_id가 null이지만 category(enum)이 일치하는 게시글도 조회
-                if (legacyCategory != null) {
-                    Page<Post> legacyPage = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryAndTitleContainingIgnoreCase(legacyCategory, kw, largePageable);
-                    legacyPosts = legacyPage.getContent().stream()
-                            .filter(p -> p.getCategoryId() == null && !p.getDeleted()) // category_id가 null이고 삭제되지 않은 것만
+                for (PostCategory legacyCategory : legacyCategories) {
+                    List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryAndTitleContainingIgnoreCase(legacyCategory, kw, largePageable)
+                            .getContent().stream()
+                            .filter(p -> p.getCategoryId() == null && !p.getDeleted())
                             .toList();
+                    legacyPosts.addAll(batch);
                 }
             }
         } else {
@@ -198,32 +221,24 @@ public class PostService {
             }
         }
 
-        // 일반 글 매핑 (category_id 기반)
         List<PostListItemResponse> normalItems = page.getContent().stream()
                 .map(this::toListItem)
                 .toList();
-        
-        // 기존 게시글 매핑 (category enum 기반)
         List<PostListItemResponse> legacyItems = legacyPosts.stream()
                 .map(this::toListItem)
                 .toList();
-        
-        // 중복 제거 (같은 ID가 있으면 제거)
         java.util.Set<Long> existingIds = normalItems.stream()
                 .map(PostListItemResponse::id)
                 .collect(java.util.stream.Collectors.toSet());
         List<PostListItemResponse> uniqueLegacyItems = legacyItems.stream()
                 .filter(item -> !existingIds.contains(item.id()))
                 .toList();
-        
-        log.debug("PostService.list - noticeCount={}, normalItems.size()={}, legacyItems.size()={}, uniqueLegacyItems.size()={}, categoryId={}, keyword={}", 
-                noticeCount, normalItems.size(), legacyItems.size(), uniqueLegacyItems.size(), categoryId, kw);
-        
-        // 일반 글과 기존 게시글 합치기 (정렬: 최신순)
         List<PostListItemResponse> combinedItems = new ArrayList<>(normalItems);
         combinedItems.addAll(uniqueLegacyItems);
-        // 최신순 정렬
         combinedItems.sort((a, b) -> b.createdAt().compareTo(a.createdAt()));
+        
+        log.debug("PostService.list - noticeCount={}, normalItems.size()={}, legacyItems.size()={}, categoryId={}, keyword={}", 
+                noticeCount, normalItems.size(), uniqueLegacyItems.size(), categoryId, kw);
         
         // 페이징 처리 (합쳐진 리스트에서 페이지 크기만큼만 가져오기)
         int start = (isFirstPage && noticeCount > 0) 
@@ -246,8 +261,10 @@ public class PostService {
             allItems = pagedItems;
         }
         
-        // 전체 개수는 공지사항 + 일반 글 개수 + 기존 게시글 개수 (중복 제거 후)
-        long totalCombinedElements = normalItems.size() + uniqueLegacyItems.size();
+        // 전체 개수 (categoryId 조회 시 병합 결과, 전체 조회 시 Page 반영)
+        long totalCombinedElements = (categoryId != null)
+                ? combinedItems.size()
+                : page.getTotalElements();
         long totalElements = noticeCount + totalCombinedElements;
         int totalPages = (int) Math.ceil((double) totalCombinedElements / pageable.getPageSize());
 
@@ -292,7 +309,7 @@ public class PostService {
         saved.changeContentMdPath(mdPath);
 
         // 버전 정보 저장 (초기 버전)
-        savePostVersion(saved.getId(), req.contentMd());
+        savePostVersion(saved.getId(), req.title(), req.contentMd(), true);
 
         return toResponse(saved);
     }
@@ -358,7 +375,7 @@ public class PostService {
         storage.overwrite(mdPath, req.contentMd());
         
         // 내용 변경 시 새 버전 저장
-        savePostVersion(post.getId(), req.contentMd());
+        savePostVersion(post.getId(), req.title(), req.contentMd(), true);
         
         return toResponse(post);
     }
@@ -394,10 +411,8 @@ public class PostService {
         // 첨부파일 저장
         if (attachments != null && !attachments.isEmpty()) {
             try {
-                List<String> attachmentUrls = attachmentStorage.saveAttachments(attachments);
-                String attachmentsJson = attachmentUrls.stream()
-                        .map(url -> "\"" + url.replace("\"", "\\\"") + "\"")
-                        .collect(Collectors.joining(",", "[", "]"));
+                List<AttachmentInfo> infos = attachmentStorage.saveAttachments(attachments);
+                String attachmentsJson = buildAttachmentsJson(infos);
                 post.changeAttachments(attachmentsJson);
             } catch (IOException e) {
                 throw new IllegalStateException("Failed to save attachments", e);
@@ -409,7 +424,7 @@ public class PostService {
         saved.changeContentMdPath(mdPath);
 
         // 버전 정보 저장 (초기 버전)
-        savePostVersion(saved.getId(), md);
+        savePostVersion(saved.getId(), finalTitle, md, true);
 
         return toResponse(saved);
     }
@@ -493,10 +508,8 @@ public class PostService {
             
             // 새 첨부파일 저장
             try {
-                List<String> attachmentUrls = attachmentStorage.saveAttachments(attachments);
-                String attachmentsJson = attachmentUrls.stream()
-                        .map(url -> "\"" + url.replace("\"", "\\\"") + "\"")
-                        .collect(Collectors.joining(",", "[", "]"));
+                List<AttachmentInfo> infos = attachmentStorage.saveAttachments(attachments);
+                String attachmentsJson = buildAttachmentsJson(infos);
                 post.changeAttachments(attachmentsJson);
             } catch (IOException e) {
                 throw new IllegalStateException("Failed to save attachments", e);
@@ -513,28 +526,80 @@ public class PostService {
         }
         
         // 내용 변경 시 새 버전 저장
-        savePostVersion(post.getId(), markdown);
+        savePostVersion(post.getId(), post.getTitle(), markdown, true);
 
         return toResponse(post);
     }
 
     private List<String> parseAttachmentUrls(String json) {
-        if (json == null || json.isBlank() || !json.startsWith("[") || !json.endsWith("]")) {
+        List<AttachmentInfo> infos = parseAttachmentInfos(json);
+        return infos.stream().map(AttachmentInfo::url).toList();
+    }
+
+    /**
+     * 첨부파일 JSON 파싱. 구형 ["url"] 형식과 신형 [{"url":"...","name":"..."}] 형식 모두 지원
+     */
+    private List<AttachmentInfo> parseAttachmentInfos(String json) {
+        if (json == null || json.isBlank() || !json.startsWith("[")) {
             return new ArrayList<>();
         }
-        String content = json.substring(1, json.length() - 1).trim();
-        if (content.isEmpty()) {
-            return new ArrayList<>();
-        }
-        List<String> urls = new ArrayList<>();
-        String[] parts = content.split(",");
-        for (String part : parts) {
-            String trimmed = part.trim();
-            if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-                urls.add(trimmed.substring(1, trimmed.length() - 1));
+        List<AttachmentInfo> result = new ArrayList<>();
+        String content = json.substring(1, json.endsWith("]") ? json.length() - 1 : json.length()).trim();
+        if (content.isEmpty()) return result;
+
+        // 신형: {"url":"...","name":"..."} 또는 {"url":"..."}
+        if (content.contains("\"url\"")) {
+            int pos = 0;
+            while ((pos = content.indexOf("{\"url\"", pos)) >= 0) {
+                int end = content.indexOf("}", pos) + 1;
+                if (end <= pos) break;
+                String obj = content.substring(pos, end);
+                String url = extractJsonStringValue(obj, "url");
+                if (url != null && !url.isBlank()) {
+                    String name = extractJsonStringValue(obj, "name");
+                    result.add(new AttachmentInfo(url, name));
+                }
+                pos = end;
+            }
+        } else {
+            // 구형: "url1","url2"
+            for (String part : content.split(",")) {
+                String trimmed = part.trim();
+                if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+                    String url = trimmed.substring(1, trimmed.length() - 1).replace("\\\"", "\"");
+                    if (!url.isBlank()) result.add(new AttachmentInfo(url, null));
+                }
             }
         }
-        return urls;
+        return result;
+    }
+
+    private String extractJsonStringValue(String json, String key) {
+        String search = "\"" + key + "\"";
+        int idx = json.indexOf(search);
+        if (idx < 0) return null;
+        int colon = json.indexOf(":", idx);
+        int q1 = json.indexOf("\"", colon);
+        if (q1 < 0) return null;
+        int q2 = json.indexOf("\"", q1 + 1);
+        if (q2 < 0) return null;
+        return json.substring(q1 + 1, q2).replace("\\\"", "\"");
+    }
+
+    private String buildAttachmentsJson(List<AttachmentInfo> infos) {
+        if (infos == null || infos.isEmpty()) {
+            return "[]";
+        }
+        return infos.stream()
+                .map(info -> {
+                    String url = "\"" + info.url().replace("\"", "\\\"") + "\"";
+                    if (info.originalFilename() != null && !info.originalFilename().isBlank()) {
+                        String name = "\"" + info.originalFilename().replace("\"", "\\\"") + "\"";
+                        return "{\"url\":" + url + ",\"name\":" + name + "}";
+                    }
+                    return "{\"url\":" + url + "}";
+                })
+                .collect(Collectors.joining(",", "[", "]"));
     }
 
     /**
@@ -612,7 +677,12 @@ public class PostService {
             }
             
             // 내용 변경 시 새 버전 저장
-            savePostVersion(post.getId(), req.markdown());
+            String versionTitle = req.title() != null && !req.title().isBlank() ? req.title() : post.getTitle();
+            savePostVersion(post.getId(), versionTitle, req.markdown(), true);
+        } else {
+            // 제목/카테고리 등 메타데이터만 변경된 경우에도 버전 저장
+            String versionTitle = req.title() != null && !req.title().isBlank() ? req.title() : post.getTitle();
+            savePostVersionForMetadataChange(post.getId(), versionTitle);
         }
 
         return toResponse(post);
@@ -629,26 +699,19 @@ public class PostService {
 
         try {
             // 새 첨부파일 저장
-            List<String> newAttachmentUrls = attachmentStorage.saveAttachments(attachments);
+            List<AttachmentInfo> newInfos = attachmentStorage.saveAttachments(attachments);
             
             // 기존 첨부파일 가져오기
-            String existingAttachments = post.getAttachments();
-            List<String> allUrls = new ArrayList<>();
+            List<AttachmentInfo> allInfos = parseAttachmentInfos(post.getAttachments());
+            allInfos.addAll(newInfos);
             
-            if (existingAttachments != null && !existingAttachments.isBlank() && !existingAttachments.equals("null") && !existingAttachments.equals("[]")) {
-                allUrls.addAll(parseAttachmentUrls(existingAttachments));
-            }
-            
-            // 새 첨부파일 추가
-            allUrls.addAll(newAttachmentUrls);
-            
-            // JSON 배열로 변환하여 저장
-            String attachmentsJson = allUrls.stream()
-                    .map(url -> "\"" + url.replace("\"", "\\\"") + "\"")
-                    .collect(Collectors.joining(",", "[", "]"));
+            String attachmentsJson = buildAttachmentsJson(allInfos);
             post.changeAttachments(attachmentsJson);
             
             postRepository.save(post);
+            
+            // 첨부파일 변경 시에도 버전 저장
+            savePostVersionForMetadataChange(post.getId(), post.getTitle());
             
             return toResponse(post);
         } catch (IOException e) {
@@ -671,15 +734,37 @@ public class PostService {
     }
 
     /**
-     * 게시글 내용 변경 시 새 버전 저장
+     * 제목/첨부파일 등 메타데이터만 변경된 경우에도 버전 저장.
+     * 현재 본문 내용을 읽어서 새 버전 생성.
      */
-    private void savePostVersion(Long postId, String contentMd) {
+    private void savePostVersionForMetadataChange(Long postId, String title) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new NotFoundException("Post not found: " + postId));
+        String mdPath = post.getContentMdPath();
+        String contentMd = (mdPath != null && !mdPath.isBlank())
+                ? storage.read(mdPath)
+                : "";
+        if (contentMd == null) contentMd = "";
+        savePostVersion(postId, title, contentMd, false); // 메타데이터 변경은 본문 동일해도 저장
+    }
+
+    /**
+     * 게시글 내용 변경 시 새 버전 저장.
+     * @param skipIfContentSame true면 본문이 최신 버전과 동일할 때 저장 생략 (중복 방지)
+     */
+    private void savePostVersion(Long postId, String title, String contentMd, boolean skipIfContentSame) {
         if (contentMd == null || contentMd.isBlank()) {
             return; // 내용이 없으면 버전 저장하지 않음
         }
+        if (skipIfContentSame) {
+            Optional<PostVersion> latest = postVersionRepository.findFirstByPostIdOrderByVersionNumberDesc(postId);
+            if (latest.isPresent() && contentMd.equals(latest.get().getContentMd())) {
+                return;
+            }
+        }
         
         Integer nextVersionNumber = postVersionRepository.getNextVersionNumber(postId);
-        PostVersion version = new PostVersion(postId, nextVersionNumber, contentMd);
+        PostVersion version = new PostVersion(postId, nextVersionNumber, title, contentMd);
         PostVersion savedVersion = postVersionRepository.save(version);
         
         // Post 엔티티의 currentVersionId 업데이트
@@ -786,17 +871,15 @@ public class PostService {
     }
 
     /**
-     * 전체 변경 이력 조회 (생성, 수정, 삭제 통합)
-     * @param changeType 필터: null(전체), "생성", "수정", "삭제"
+     * 전체 변경 이력 조회 (생성, 수정, 삭제 통합). 페이징 및 검색 지원.
      */
     @Transactional(readOnly = true)
-    public List<com.fasoo.cs_doc.post.dto.ChangeHistoryItem> getAllChangeHistory(String changeType) {
+    public PageResponse<com.fasoo.cs_doc.post.dto.ChangeHistoryItem> getAllChangeHistory(Pageable pageable, String changeType, String keyword, Long postId) {
         List<com.fasoo.cs_doc.post.dto.ChangeHistoryItem> history = new ArrayList<>();
         
         // 1. 모든 버전 조회 (생성/수정 이력)
         List<PostVersion> allVersions = postVersionRepository.findAllByOrderByCreatedAtDesc();
         
-        // 각 버전에 대해 게시글 정보 조회
         Map<Long, Post> postCache = new HashMap<>();
         for (PostVersion version : allVersions) {
             Post post = postCache.computeIfAbsent(version.getPostId(), id -> 
@@ -809,13 +892,14 @@ public class PostService {
             String type = version.getVersionNumber() == 1 ? "생성" : "수정";
             
             if (changeType == null || changeType.equals(type)) {
+                String versionTitle = version.getTitle();
                 if (type.equals("생성")) {
                     history.add(com.fasoo.cs_doc.post.dto.ChangeHistoryItem.create(
-                            postItem, version.getVersionNumber(), version.getCreatedAt()
+                            postItem, version.getVersionNumber(), version.getCreatedAt(), versionTitle
                     ));
                 } else {
                     history.add(com.fasoo.cs_doc.post.dto.ChangeHistoryItem.update(
-                            postItem, version.getVersionNumber(), version.getCreatedAt()
+                            postItem, version.getVersionNumber(), version.getCreatedAt(), versionTitle
                     ));
                 }
             }
@@ -833,7 +917,26 @@ public class PostService {
         // 변경일 기준 내림차순 정렬
         history.sort((a, b) -> b.changeDate().compareTo(a.changeDate()));
         
-        return history;
+        // 검색 필터 적용
+        if (postId != null) {
+            history = history.stream().filter(h -> postId.equals(h.postId())).toList();
+        } else if (keyword != null && !keyword.trim().isEmpty()) {
+            String kw = keyword.trim().toLowerCase();
+            history = history.stream()
+                    .filter(h -> h.postTitle() != null && h.postTitle().toLowerCase().contains(kw))
+                    .toList();
+        }
+        
+        // 페이징 적용
+        int page = pageable.getPageNumber();
+        int size = pageable.getPageSize();
+        int total = history.size();
+        int totalPages = size > 0 ? (int) Math.ceil((double) total / size) : 0;
+        int start = Math.min(page * size, total);
+        int end = Math.min(start + size, total);
+        List<com.fasoo.cs_doc.post.dto.ChangeHistoryItem> paged = start < total ? history.subList(start, end) : List.of();
+        
+        return PageResponse.of(paged, page, size, (long) total, totalPages, page < totalPages - 1, page > 0);
     }
 
     /**

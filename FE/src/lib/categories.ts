@@ -75,7 +75,6 @@ export function getApiCategoriesFromCatParam(catParam: string | null): ApiCatego
     if (catParam != null && isApiCategory(catParam)) {
         return [catParam];
     }
-    return ["SYSTEM", "INCIDENT", "TRAINING"];
 }
 
 /**

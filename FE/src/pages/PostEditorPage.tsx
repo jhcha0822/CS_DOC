@@ -77,6 +77,8 @@ export default function PostEditorPage() {
     const [isDragging, setIsDragging] = useState(false);
 
     const editorRef = useRef<{ textarea?: HTMLTextAreaElement } | null>(null);
+    const imageInputRef = useRef<HTMLInputElement | null>(null);
+    const pendingReplaceRef = useRef<{ runUpdate: (images: File[]) => Promise<void> } | null>(null);
 
     const insertImageUrl = useCallback(
         (url: string, start?: number, end?: number) => {
@@ -152,6 +154,19 @@ export default function PostEditorPage() {
         return "제목 없음";
     };
 
+    /** md 본문에 로컬 PC 이미지 경로가 있는지 검사 (file://, C:\, ./, ../ 등) */
+    const hasLocalImageInMd = (text: string): boolean => {
+        const imgRegex = /!\[.*?\]\((.*?)\)/g;
+        let m;
+        while ((m = imgRegex.exec(text)) !== null) {
+            const url = m[1]?.trim() ?? "";
+            if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("/api/")) {
+                return true; // 로컬 경로로 간주
+            }
+        }
+        return false;
+    };
+
     const handleFileSelect = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
             const file = e.target.files?.[0];
@@ -164,11 +179,18 @@ export default function PostEditorPage() {
             reader.onload = () => {
                 const text = (reader.result as string) ?? "";
                 setMarkdown(text);
-                if (!isEdit) setTitle(extractTitleFromMd(text));
+                if (!isEdit) {
+                    setTitle((prev) => (prev.trim() ? prev : extractTitleFromMd(text)));
+                }
+                setSelectedFile(file);
+                setError(null);
+                if (hasLocalImageInMd(text)) {
+                    if (window.confirm("Markdown 내 로컬 PC의 이미지가 있습니다. 같이 첨부해주세요.\n\n확인을 누르면 파일 선택 창이 열립니다.")) {
+                        setTimeout(() => imageInputRef.current?.click(), 100);
+                    }
+                }
             };
             reader.readAsText(file, "UTF-8");
-            setSelectedFile(file);
-            setError(null);
             e.target.value = "";
         },
         [isEdit]
@@ -177,9 +199,15 @@ export default function PostEditorPage() {
     const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
         const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-        setSelectedImages(imageFiles);
+        if (pendingReplaceRef.current) {
+            const { runUpdate } = pendingReplaceRef.current;
+            pendingReplaceRef.current = null;
+            runUpdate([...selectedImages, ...imageFiles]);
+        } else {
+            setSelectedImages(imageFiles);
+        }
         e.target.value = "";
-    }, []);
+    }, [selectedImages]);
 
     const handleCreateByUpload = useCallback(async () => {
         if (!selectedFile) {
@@ -215,7 +243,7 @@ export default function PostEditorPage() {
         } finally {
             setUploading(false);
         }
-    }, [selectedFile, title, selectedCategoryId, isNotice, selectedImages, searchParams, navigate]);
+    }, [selectedFile, title, selectedCategoryId, isNotice, selectedImages, selectedAttachments, searchParams, navigate]);
 
     const [imageUploading, setImageUploading] = useState(false);
 
@@ -258,35 +286,47 @@ export default function PostEditorPage() {
     );
 
     const handleReplaceContentByUpload = useCallback(
-        async (e: React.ChangeEvent<HTMLInputElement>) => {
+        (e: React.ChangeEvent<HTMLInputElement>) => {
             const file = e.target.files?.[0];
             if (!file || !Number.isFinite(postId)) return;
             if (!file.name.toLowerCase().endsWith(".md")) {
                 setError(".md 파일만 선택해 주세요.");
                 return;
             }
-            setUploading(true);
-            setError(null);
-            try {
-                await updateContentByUpload(postId, file, {
-                    title: title.trim() || undefined,
-                    images: selectedImages.length > 0 ? selectedImages : undefined,
-                    attachments: selectedAttachments.length > 0 ? selectedAttachments : undefined,
-                });
-                const contentRes = await fetchPostContent(postId);
-                setMarkdown(contentRes.markdown ?? "");
-            } catch (err) {
-                const msg =
-                    err instanceof ApiError
-                        ? err.message
-                        : err instanceof Error
-                          ? err.message
-                          : "본문 교체에 실패했습니다.";
-                setError(msg);
-            } finally {
-                setUploading(false);
-            }
-            e.target.value = "";
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const text = (reader.result as string) ?? "";
+                const runUpdate = async (images: File[]) => {
+                    setUploading(true);
+                    setError(null);
+                    try {
+                        await updateContentByUpload(postId, file, {
+                            title: title.trim() || undefined,
+                            images: images.length > 0 ? images : undefined,
+                            attachments: selectedAttachments.length > 0 ? selectedAttachments : undefined,
+                        });
+                        const contentRes = await fetchPostContent(postId);
+                        setMarkdown(contentRes.markdown ?? "");
+                    } catch (err) {
+                        const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : "본문 교체에 실패했습니다.";
+                        setError(msg);
+                    } finally {
+                        setUploading(false);
+                    }
+                    e.target.value = "";
+                };
+                if (hasLocalImageInMd(text)) {
+                    if (window.confirm("Markdown 내 로컬 PC의 이미지가 있습니다. 같이 첨부해주세요.\n\n확인을 누르면 파일 선택 창이 열립니다.")) {
+                        pendingReplaceRef.current = { runUpdate };
+                        setTimeout(() => imageInputRef.current?.click(), 100);
+                    } else {
+                        e.target.value = "";
+                    }
+                } else {
+                    await runUpdate(selectedImages);
+                }
+            };
+            reader.readAsText(file, "UTF-8");
         },
         [postId, title, selectedImages, selectedAttachments]
     );
@@ -667,6 +707,7 @@ export default function PostEditorPage() {
                             >
                                 이미지 파일 선택 (선택사항)
                                 <input
+                                    ref={imageInputRef}
                                     type="file"
                                     accept="image/*"
                                     multiple
@@ -738,6 +779,7 @@ export default function PostEditorPage() {
                             >
                                 이미지 파일 선택 (선택사항)
                                 <input
+                                    ref={imageInputRef}
                                     type="file"
                                     accept="image/*"
                                     multiple

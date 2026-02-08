@@ -32,6 +32,12 @@ public class PostVersion {
     private Integer versionNumber;
 
     /**
+     * 해당 버전 시점의 제목
+     */
+    @Column(name = "title", nullable = true, length = 200)
+    private String title;
+
+    /**
      * 해당 버전의 마크다운 내용
      */
     @Column(name = "content_md", nullable = false, columnDefinition = "CLOB")
@@ -49,9 +55,10 @@ public class PostVersion {
 
     protected PostVersion() {}
 
-    public PostVersion(Long postId, Integer versionNumber, String contentMd) {
+    public PostVersion(Long postId, Integer versionNumber, String title, String contentMd) {
         this.postId = postId;
         this.versionNumber = versionNumber;
+        this.title = title;
         this.contentMd = contentMd;
     }
 
@@ -63,6 +70,7 @@ public class PostVersion {
     public Long getId() { return id; }
     public Long getPostId() { return postId; }
     public Integer getVersionNumber() { return versionNumber; }
+    public String getTitle() { return title; }
     public String getContentMd() { return contentMd; }
     public String getCreatedBy() { return createdBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }

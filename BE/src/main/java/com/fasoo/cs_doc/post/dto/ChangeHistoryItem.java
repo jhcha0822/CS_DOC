@@ -17,10 +17,11 @@ public record ChangeHistoryItem(
         Integer versionNumber,
         String attachments // 첨부파일 정보
 ) {
-    public static ChangeHistoryItem create(PostListItemResponse post, Integer versionNumber, LocalDateTime createdAt) {
+    public static ChangeHistoryItem create(PostListItemResponse post, Integer versionNumber, LocalDateTime createdAt, String versionTitle) {
+        String title = post.title(); // 목록에는 현 제목 표기 (글 ID로 동일 글 판단)
         return new ChangeHistoryItem(
                 post.id(),
-                post.title(),
+                title,
                 post.category() != null ? post.category().name() : null,
                 post.categoryId(),
                 "생성",
@@ -31,10 +32,11 @@ public record ChangeHistoryItem(
         );
     }
 
-    public static ChangeHistoryItem update(PostListItemResponse post, Integer versionNumber, LocalDateTime createdAt) {
+    public static ChangeHistoryItem update(PostListItemResponse post, Integer versionNumber, LocalDateTime createdAt, String versionTitle) {
+        String title = post.title(); // 목록에는 현 제목 표기 (글 ID로 동일 글 판단)
         return new ChangeHistoryItem(
                 post.id(),
-                post.title(),
+                title,
                 post.category() != null ? post.category().name() : null,
                 post.categoryId(),
                 "수정",

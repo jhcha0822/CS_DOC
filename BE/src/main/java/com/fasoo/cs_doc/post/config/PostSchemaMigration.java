@@ -129,6 +129,7 @@ public class PostSchemaMigration implements ApplicationRunner {
                             id BIGINT PRIMARY KEY AUTO_INCREMENT,
                             post_id BIGINT NOT NULL,
                             version_number INT NOT NULL,
+                            title VARCHAR(200) NULL,
                             content_md CLOB NOT NULL,
                             created_by VARCHAR(100) NULL,
                             created_at TIMESTAMP NOT NULL,
@@ -146,6 +147,22 @@ public class PostSchemaMigration implements ApplicationRunner {
                 }
             } catch (Exception e) {
                 log.warn("Post post_version table migration failed: {}", e.getMessage());
+            }
+            
+            // 6-1. post_version 테이블에 title 컬럼 추가 (기존 테이블용)
+            try {
+                String checkTableSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'POST_VERSION'";
+                Long tableCount = ((Number) entityManager.createNativeQuery(checkTableSql).getSingleResult()).longValue();
+                if (tableCount > 0) {
+                    String checkColumnSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'POST_VERSION' AND COLUMN_NAME = 'TITLE'";
+                    Long colCount = ((Number) entityManager.createNativeQuery(checkColumnSql).getSingleResult()).longValue();
+                    if (colCount == 0) {
+                        entityManager.createNativeQuery("ALTER TABLE post_version ADD COLUMN title VARCHAR(200) NULL").executeUpdate();
+                        log.info("Post post_version title column added successfully");
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Post post_version title column migration failed: {}", e.getMessage());
             }
             
             // 7. category 컬럼을 nullable로 변경 시도

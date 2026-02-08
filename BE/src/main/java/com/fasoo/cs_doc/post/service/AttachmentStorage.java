@@ -28,14 +28,14 @@ public class AttachmentStorage {
     }
 
     /**
-     * 첨부파일들을 저장하고 URL 목록 반환
+     * 첨부파일들을 저장하고 URL 및 원본 파일명 목록 반환
      */
-    public List<String> saveAttachments(List<MultipartFile> files) throws IOException {
+    public List<AttachmentInfo> saveAttachments(List<MultipartFile> files) throws IOException {
         if (files == null || files.isEmpty()) {
             return new ArrayList<>();
         }
 
-        List<String> urls = new ArrayList<>();
+        List<AttachmentInfo> result = new ArrayList<>();
         Path attachmentsDir = uploadRoot.resolve(ATTACHMENTS_DIR);
         Files.createDirectories(attachmentsDir);
 
@@ -65,10 +65,10 @@ public class AttachmentStorage {
             Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
 
             String url = "/uploads/" + ATTACHMENTS_DIR + "/" + filename;
-            urls.add(url);
+            result.add(new AttachmentInfo(url, originalFilename));
         }
 
-        return urls;
+        return result;
     }
 
     /**

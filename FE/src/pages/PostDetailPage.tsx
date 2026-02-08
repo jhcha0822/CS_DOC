@@ -280,41 +280,42 @@ export default function PostDetailPage() {
                         {(() => {
                             try {
                                 if (post.attachments && post.attachments !== "null" && post.attachments.trim() !== "" && post.attachments.trim() !== "[]") {
-                                    console.log("[PostDetail] Raw attachments:", post.attachments);
-                                    let parsed: string[] = [];
+                                    type AttachItem = { url: string; name?: string };
+                                    let items: AttachItem[] = [];
                                     try {
-                                        parsed = JSON.parse(post.attachments);
-                                    } catch (parseError) {
-                                        // JSON 파싱 실패 시 문자열로 처리 (단일 URL인 경우)
+                                        const parsed = JSON.parse(post.attachments);
+                                        if (Array.isArray(parsed)) {
+                                            items = parsed.map((p: unknown) => {
+                                                if (typeof p === "string") return { url: p };
+                                                if (p && typeof p === "object" && "url" in p) {
+                                                    const o = p as { url: string; name?: string };
+                                                    return { url: o.url, name: o.name };
+                                                }
+                                                return null;
+                                            }).filter(Boolean) as AttachItem[];
+                                        }
+                                    } catch {
                                         const trimmed = post.attachments.trim();
-                                        if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
-                                            parsed = [trimmed.slice(1, -1)];
-                                        } else if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-                                            // 배열 형태이지만 JSON 파싱 실패 시 수동 파싱 시도
+                                        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
                                             const content = trimmed.slice(1, -1).trim();
                                             if (content) {
-                                                parsed = content.split(",").map(s => {
-                                                    const trimmed = s.trim();
-                                                    return trimmed.startsWith("\"") && trimmed.endsWith("\"") 
-                                                        ? trimmed.slice(1, -1) 
-                                                        : trimmed;
+                                                items = content.split(",").map(s => {
+                                                    const t = s.trim();
+                                                    const url = t.startsWith("\"") && t.endsWith("\"") ? t.slice(1, -1) : t;
+                                                    return { url };
                                                 });
                                             }
-                                        } else {
-                                            parsed = [trimmed];
                                         }
                                     }
-                                    console.log("[PostDetail] Parsed attachments:", parsed);
-                                    if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(url => url && url.trim() !== "")) {
-                                        const validUrls = parsed.filter(url => url && url.trim() !== "");
-                                        if (validUrls.length > 0) {
+                                    const valid = items.filter(x => x.url && x.url.trim() !== "");
+                                    if (valid.length > 0) {
                                             return (
                                                 <div style={{ marginTop: 16, padding: 12, background: "#f5f5f5", borderRadius: 8, border: "1px solid #ddd" }}>
-                                                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>첨부파일 ({validUrls.length}개)</div>
+                                                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>첨부파일 ({valid.length}개)</div>
                                                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                                        {validUrls.map((url: string, idx: number) => {
-                                                            const cleanUrl = url.trim();
-                                                            const fileName = cleanUrl.split("/").pop() || `첨부파일${idx + 1}`;
+                                                        {valid.map((item: AttachItem, idx: number) => {
+                                                            const cleanUrl = item.url.trim();
+                                                            const fileName = item.name || cleanUrl.split("/").pop() || `첨부파일${idx + 1}`;
                                                             const fullUrl = cleanUrl.startsWith("http") ? cleanUrl : `${getApiBase()}${cleanUrl}`;
                                                             return (
                                                                 <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -346,7 +347,6 @@ export default function PostDetailPage() {
                                             );
                                         }
                                     }
-                                }
                             } catch (e) {
                                 console.error("[PostDetail] Error parsing attachments:", e);
                             }

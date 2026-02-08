@@ -136,5 +136,47 @@ public class CategoryDataLoader implements ApplicationRunner {
                 }
             }
         }
+
+        // "기존 인력 교육" 카테고리 및 하위 확인 및 생성
+        Category legacy = categoryRepository.findAll().stream()
+                .filter(c -> "기존 인력 교육".equals(c.getLabel()) || "CAT_LEGACY".equals(c.getCode()))
+                .findFirst()
+                .orElse(null);
+
+        if (legacy == null) {
+            legacy = new Category("CAT_LEGACY", "기존 인력 교육", null, 0, 1);
+            legacy = categoryRepository.save(legacy);
+        } else {
+            boolean needsSave = false;
+            if (!"기존 인력 교육".equals(legacy.getLabel())) { legacy.setLabel("기존 인력 교육"); needsSave = true; }
+            if (legacy.getCode() == null || legacy.getCode().isEmpty() || !"CAT_LEGACY".equals(legacy.getCode())) { legacy.setCode("CAT_LEGACY"); needsSave = true; }
+            if (legacy.getParentId() != null || legacy.getDepth() != 0) { legacy.setParentId(null); legacy.setDepth(0); needsSave = true; }
+            if (legacy.getSortOrder() != 1) { legacy.setSortOrder(1); needsSave = true; }
+            if (needsSave) categoryRepository.save(legacy);
+        }
+        final Long legacyId = legacy.getId();
+
+        List<String> legacyChildLabels = List.of("기술 교육", "제품 교육", "3차 이관 대상 교육");
+        List<String> legacyChildCodes = List.of("CAT_TECH", "CAT_PRODUCT", "CAT_MIGRATION");
+        for (int i = 0; i < legacyChildLabels.size(); i++) {
+            String label = legacyChildLabels.get(i);
+            String code = legacyChildCodes.get(i);
+            Category child = categoryRepository.findAll().stream()
+                    .filter(c -> label.equals(c.getLabel()) || code.equals(c.getCode()))
+                    .findFirst()
+                    .orElse(null);
+            if (child == null) {
+                child = new Category(code, label, legacyId, 1, i);
+                categoryRepository.save(child);
+            } else {
+                boolean needsSave = false;
+                if (!label.equals(child.getLabel())) { child.setLabel(label); needsSave = true; }
+                if (child.getCode() == null || child.getCode().isEmpty() || !code.equals(child.getCode())) { child.setCode(code); needsSave = true; }
+                if (!legacyId.equals(child.getParentId())) { child.setParentId(legacyId); needsSave = true; }
+                if (child.getDepth() != 1) { child.setDepth(1); needsSave = true; }
+                if (child.getSortOrder() != i) { child.setSortOrder(i); needsSave = true; }
+                if (needsSave) categoryRepository.save(child);
+            }
+        }
     }
 }

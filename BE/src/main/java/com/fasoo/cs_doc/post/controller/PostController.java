@@ -225,13 +225,20 @@ public class PostController {
 
     @Operation(
             summary = "Get all change history",
-            description = "Get all change history (create, update, delete) across all posts. Can filter by change type."
+            description = "Get all change history (create, update, delete) across all posts. Can filter by change type. Supports pagination."
     )
     @GetMapping("/changes/history")
-    public List<com.fasoo.cs_doc.post.dto.ChangeHistoryItem> getAllChangeHistory(
+    public PageResponse<com.fasoo.cs_doc.post.dto.ChangeHistoryItem> getAllChangeHistory(
             @Parameter(description = "Change type filter: null(전체), 생성, 수정, 삭제")
-            @RequestParam(required = false) String changeType
+            @RequestParam(required = false) String changeType,
+            @Parameter(description = "Search keyword (title)")
+            @RequestParam(required = false) String keyword,
+            @Parameter(description = "Post ID filter")
+            @RequestParam(required = false) Long postId,
+            @ParameterObject
+            @PageableDefault(size = 10)
+            Pageable pageable
     ) {
-        return postService.getAllChangeHistory(changeType);
+        return postService.getAllChangeHistory(pageable, changeType, keyword, postId);
     }
 }

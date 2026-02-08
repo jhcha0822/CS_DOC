@@ -33,7 +33,7 @@ public class Post {
     @Column(nullable = true, length = 32)
     private PostCategory category; // Deprecated: 기존 데이터 호환성을 위해 유지하되, 새로 생성되는 게시글에는 사용하지 않음
 
-    @Column(name = "category_id", nullable = false)
+    @Column(name = "category_id", nullable = true)
     private Long categoryId;
 
     @Column(name = "is_notice", nullable = false)

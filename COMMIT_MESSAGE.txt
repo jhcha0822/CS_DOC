@@ -1,21 +1,13 @@
-feat: implement file attachments, soft delete, version management, and change history
+feat: 페이지네이션·카테고리 목록 개선 및 data-init 초기화 기능 추가
 
 FE
-- PostEditorPage: file drag-and-drop attachments, UI overflow fixes, notice checkbox positioning, require explicit category selection
-- PostDetailPage: attachment display with download links, separate view count increment, robust attachment JSON parsing
-- PostListPage: attachment icon display, view count column
-- PostVersionHistoryPage: new page with table/list view toggle, search by title/ID, change type filter (전체/생성/수정/삭제), version content preview
-- SideNav: version history menu link
-- api: attachment and version history APIs, deletePost, getAllChangeHistory
+- PostListPage: 페이지 크기 드롭다운(10/15/20), URL 파라미터로 size 저장, 페이지네이션 버튼 중앙 정렬/드롭다운 우측, "총 N개 (현재 M개 표시)" 문구
+- PostVersionHistoryPage: loadReqIdRef로 요청 경쟁 상태 방지, 페이지 크기 드롭다운, 페이지네이션 레이아웃 정리
 
 BE
-- Post: deleted field (soft delete), currentVersionId field, markAsDeleted/restore methods
-- PostVersion: new entity for version tracking (postId, versionNumber, contentMd, createdBy, createdAt)
-- PostVersionRepository: version query methods, findAllByOrderByCreatedAtDesc
-- PostService: savePostVersion (auto-version on content changes), getVersions/getVersion, delete (soft delete), listDeleted, getAllChangeHistory (unified history with changeType filter), deleted=false filtering in all queries
-- PostController: POST /{id}/attachments, DELETE /{id}, GET /{id}/versions, GET /deleted, GET /changes/history
-- PostRepository: deleted=true query methods, deleted=false added to existing queries
-- AttachmentStorage: new service for file attachments
-- PostSchemaMigration: deleted column, current_version_id column, post_version table
-- ChangeHistoryItem: new DTO with PostCategory enum to String conversion fix
-- PostVersionResponse: new DTO for version APIs
+- PostService: getCategoryIdsIncludingChildren 개선(allFind 후 parentId 기준 하위 ID 수집), legacy enum(SYSTEM/TRAINING/INCIDENT) + category_id 조회 두 단계 처리
+- CategoryDataLoader: 기존 인력 교육(CAT_LEGACY) 및 하위(기술 교육, 제품 교육, 3차 이관 대상 교육) 시드 추가
+- DataInitService: post_version/post/category 삭제 후 CategoryDataLoader 실행, H2 ID 시퀀스 1부터 재시작, posts/*.md 파일 삭제
+- DataInitRunner: data-init 프로필에서 초기화 실행
+- Post: category_id nullable=true (legacy 데이터 호환)
+- data.sql 삭제(시드 게시글 제거)

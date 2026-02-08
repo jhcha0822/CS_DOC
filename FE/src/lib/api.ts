@@ -286,6 +286,7 @@ export type PostVersion = {
     id: number;
     postId: number;
     versionNumber: number;
+    title: string | null;
     contentMd: string;
     createdBy: string | null;
     createdAt: string;
@@ -379,9 +380,29 @@ export type ChangeHistoryItem = {
 /**
  * 전체 변경 이력 조회
  */
-export async function getAllChangeHistory(changeType?: "생성" | "수정" | "삭제"): Promise<ChangeHistoryItem[]> {
+export type ChangeHistoryListResponse = {
+    items: ChangeHistoryItem[];
+    page?: number;
+    size?: number;
+    totalElements?: number;
+    totalPages?: number;
+    hasNext?: boolean;
+    hasPrevious?: boolean;
+};
+
+export async function getAllChangeHistory(
+    changeType?: "생성" | "수정" | "삭제",
+    page?: number,
+    size?: number,
+    keyword?: string,
+    postId?: number
+): Promise<ChangeHistoryListResponse> {
     const url = new URL("/api/posts/changes/history", API_BASE);
     if (changeType) url.searchParams.set("changeType", changeType);
+    if (page !== undefined) url.searchParams.set("page", page.toString());
+    if (size !== undefined) url.searchParams.set("size", size.toString());
+    if (keyword) url.searchParams.set("keyword", keyword);
+    if (postId !== undefined) url.searchParams.set("postId", postId.toString());
     
     const res = await fetch(url.toString());
     if (!res.ok) {
@@ -393,6 +414,15 @@ export async function getAllChangeHistory(changeType?: "생성" | "수정" | "�
         );
     }
     return res.json();
+}
+
+/**
+ * 특정 게시글의 변경 이력 전체 조회 (삭제된 게시글 포함).
+ * getAllChangeHistory의 postId 필터를 사용하여 조회.
+ */
+export async function getChangeHistoryForPost(postId: number): Promise<ChangeHistoryItem[]> {
+    const result = await getAllChangeHistory(undefined, 0, 9999, undefined, postId);
+    return result.items ?? [];
 }
 
 /**
@@ -442,7 +472,7 @@ export async function createPostByUpload(
     const form = new FormData();
     form.append("file", file);
     if (options?.title?.trim()) form.append("title", options.title.trim());
-    form.append("categoryId", String(options.categoryId));
+    if (options?.categoryId != null && options.categoryId > 0) form.append("categoryId", String(options.categoryId));
     if (options?.isNotice !== undefined) {
         form.append("isNotice", String(options.isNotice));
     }

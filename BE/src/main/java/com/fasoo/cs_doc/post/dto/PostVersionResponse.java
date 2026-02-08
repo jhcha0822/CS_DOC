@@ -6,6 +6,7 @@ public record PostVersionResponse(
         Long id,
         Long postId,
         Integer versionNumber,
+        String title,
         String contentMd,
         String createdBy,
         LocalDateTime createdAt
@@ -15,6 +16,7 @@ public record PostVersionResponse(
                 version.getId(),
                 version.getPostId(),
                 version.getVersionNumber(),
+                version.getTitle(),
                 version.getContentMd(),
                 version.getCreatedBy(),
                 version.getCreatedAt()

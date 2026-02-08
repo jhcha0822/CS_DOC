@@ -3,7 +3,7 @@ import { Link, createSearchParams, useSearchParams } from "react-router-dom";
 import { fetchCategories, fetchPosts, type CategoryItem, type PostListItem, type SearchIn } from "../lib/api";
 import { labelOfApiCategory } from "../lib/categories";
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 15, 20] as const;
 
 function formatKST(iso: string) {
     const d = new Date(iso);
@@ -76,6 +76,10 @@ export default function PostListPage() {
     const qFromUrl = sp.get("q") ?? "";
     const searchInFromUrl = (sp.get("searchIn") as SearchIn) || "title";
     const pageFromUrl = Math.max(1, parseInt(sp.get("page") ?? "1", 10) || 1);
+    const sizeFromUrl = (() => {
+        const s = parseInt(sp.get("size") ?? "10", 10);
+        return PAGE_SIZE_OPTIONS.includes(s as 10 | 15 | 20) ? s : 10;
+    })();
     const [inputQ, setInputQ] = useState(qFromUrl);
     const [searchIn, setSearchIn] = useState<SearchIn>(
         SEARCH_IN_OPTIONS.some((o) => o.value === searchInFromUrl) ? searchInFromUrl : "title"
@@ -136,6 +140,17 @@ export default function PostListPage() {
         [sp, setSp]
     );
 
+    const setPageSize = useCallback(
+        (size: number) => {
+            const next = new URLSearchParams(sp);
+            if (size === 10) next.delete("size");
+            else next.set("size", String(size));
+            next.delete("page");
+            setSp(next, { replace: true });
+        },
+        [sp, setSp]
+    );
+
     const setCat = useCallback(
         (categoryId: number | null) => {
             const next = new URLSearchParams(sp);
@@ -159,7 +174,7 @@ export default function PostListPage() {
                     q: qFromUrl.trim() || undefined,
                     searchIn: searchInFromUrl,
                     page: pageFromUrl - 1,
-                    size: PAGE_SIZE,
+                    size: sizeFromUrl,
                 });
                 if (cancelled) return;
                 setItems(data.items ?? []);
@@ -182,7 +197,7 @@ export default function PostListPage() {
         return () => {
             cancelled = true;
         };
-    }, [categoryId, qFromUrl, searchInFromUrl, pageFromUrl]);
+    }, [categoryId, qFromUrl, searchInFromUrl, pageFromUrl, sizeFromUrl]);
 
 
     // Enter 또는 '검색' 버튼 클릭 시에만 URL(q=) 반영 및 목록 조회. 입력 중에는 파라미터 전달하지 않음.
@@ -216,8 +231,9 @@ export default function PostListPage() {
         if (qFromUrl) p.q = qFromUrl;
         if (searchInFromUrl !== "title") p.searchIn = searchInFromUrl;
         if (pageFromUrl > 1) p.page = String(pageFromUrl);
+        if (sizeFromUrl !== 10) p.size = String(sizeFromUrl);
         return p;
-    }, [categoryId, qFromUrl, searchInFromUrl, pageFromUrl]);
+    }, [categoryId, qFromUrl, searchInFromUrl, pageFromUrl, sizeFromUrl]);
 
     const pageNumbers = useMemo(() => {
         const total = Math.max(1, totalPages);
@@ -342,6 +358,11 @@ export default function PostListPage() {
                 </div>
             )}
 
+            {!loading && !error && items.length > 0 && (
+                <div style={{ marginTop: 14, marginBottom: 6, fontSize: 14, opacity: 0.85 }}>
+                    총 {totalElements}개 (현재 {items.length}개 표시)
+                </div>
+            )}
             {!loading && !error && (
                 <div style={{ marginTop: 14, border: "1px solid #444", borderRadius: 8, overflow: "hidden" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
@@ -447,12 +468,15 @@ export default function PostListPage() {
                     style={{
                         marginTop: 16,
                         display: "flex",
-                        justifyContent: "center",
+                        justifyContent: "space-between",
                         alignItems: "center",
                         gap: 6,
                         flexWrap: "wrap",
+                        width: "100%",
                     }}
                 >
+                    <div style={{ flex: 1, minWidth: 0 }} />
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
                     <button
                         type="button"
                         onClick={() => setPage(1)}
@@ -500,6 +524,24 @@ export default function PostListPage() {
                     >
                         마지막
                     </button>
+                    </div>
+                    <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", minWidth: 0 }}>
+                    <select
+                        value={sizeFromUrl}
+                        onChange={(e) => setPageSize(Number(e.target.value))}
+                        style={{
+                            padding: "8px 12px",
+                            borderRadius: 6,
+                            border: "1px solid #444",
+                            background: "#fff",
+                            cursor: "pointer",
+                        }}
+                    >
+                        {PAGE_SIZE_OPTIONS.map((n) => (
+                            <option key={n} value={n}>{n}개</option>
+                        ))}
+                    </select>
+                    </div>
                 </div>
             )}
         </div>

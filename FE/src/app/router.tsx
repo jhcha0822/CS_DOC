@@ -6,6 +6,7 @@ import PostDetailPage from "../pages/PostDetailPage";
 import PostEditorPage from "../pages/PostEditorPage";
 import CategoryManagePage from "../pages/CategoryManagePage";
 import PostVersionHistoryPage from "../pages/PostVersionHistoryPage";
+import PostVersionDetailPage from "../pages/PostVersionDetailPage";
 
 export const router = createBrowserRouter([
     { path: "/", element: <Navigate to="/posts" replace /> },
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
             { path: "posts/:id/edit", element: <PostEditorPage /> },
             { path: "categories/manage", element: <CategoryManagePage /> },
             { path: "posts/versions", element: <PostVersionHistoryPage /> },
+            { path: "posts/:postId/versions/:versionNumber", element: <PostVersionDetailPage /> },
         ],
     },
 ]);

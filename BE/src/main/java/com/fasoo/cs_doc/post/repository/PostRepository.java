@@ -4,8 +4,6 @@ import com.fasoo.cs_doc.post.domain.Post;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -29,7 +27,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     // category(enum) 기반 조회 (기존 데이터 호환성, 삭제되지 않은 것만)
     Page<Post> findByIsNoticeFalseAndDeletedFalseAndCategory(com.fasoo.cs_doc.post.domain.PostCategory category, Pageable pageable);
     Page<Post> findByIsNoticeFalseAndDeletedFalseAndCategoryAndTitleContainingIgnoreCase(com.fasoo.cs_doc.post.domain.PostCategory category, String keyword, Pageable pageable);
-    
+
     // 공지사항 조회 (삭제되지 않은 것만)
     List<Post> findByIsNoticeTrueAndDeletedFalseOrderByCreatedAtDesc();
     
