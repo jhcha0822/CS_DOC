@@ -750,6 +750,7 @@ public class PostService {
 
     /**
      * 게시글 내용 변경 시 새 버전 저장.
+     * 본문은 md 파일(posts/{postId}-{versionNumber}.md)로 저장하고, DB에는 경로만 저장.
      * @param skipIfContentSame true면 본문이 최신 버전과 동일할 때 저장 생략 (중복 방지)
      */
     private void savePostVersion(Long postId, String title, String contentMd, boolean skipIfContentSame) {
@@ -758,13 +759,17 @@ public class PostService {
         }
         if (skipIfContentSame) {
             Optional<PostVersion> latest = postVersionRepository.findFirstByPostIdOrderByVersionNumberDesc(postId);
-            if (latest.isPresent() && contentMd.equals(latest.get().getContentMd())) {
-                return;
+            if (latest.isPresent()) {
+                String latestContent = readVersionContent(latest.get());
+                if (contentMd.equals(latestContent)) {
+                    return;
+                }
             }
         }
         
         Integer nextVersionNumber = postVersionRepository.getNextVersionNumber(postId);
-        PostVersion version = new PostVersion(postId, nextVersionNumber, title, contentMd);
+        String mdPath = storage.writeVersion(postId, nextVersionNumber, contentMd);
+        PostVersion version = new PostVersion(postId, nextVersionNumber, title, mdPath);
         PostVersion savedVersion = postVersionRepository.save(version);
         
         // Post 엔티티의 currentVersionId 업데이트
@@ -774,27 +779,54 @@ public class PostService {
         postRepository.save(post);
     }
 
+    private String readVersionContent(PostVersion version) {
+        String path = version.getContentMdPath();
+        if (path == null || path.isBlank()) return "";
+        try {
+            return storage.read(path);
+        } catch (Exception e) {
+            log.warn("Failed to read version content from {}: {}", path, e.getMessage());
+            return "";
+        }
+    }
+
+    private PostVersionResponse toVersionResponse(PostVersion version) {
+        String contentMd = readVersionContent(version);
+        return new PostVersionResponse(
+                version.getId(),
+                version.getPostId(),
+                version.getVersionNumber(),
+                version.getTitle(),
+                contentMd != null ? contentMd : "",
+                version.getCreatedBy(),
+                version.getCreatedAt()
+        );
+    }
+
     /**
      * 게시글의 모든 버전 조회 (삭제된 게시글 포함)
      */
     @Transactional(readOnly = true)
-    public List<PostVersion> getVersions(Long postId) {
+    public List<PostVersionResponse> getVersions(Long postId) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new NotFoundException("Post not found: " + postId));
         
-        return postVersionRepository.findByPostIdOrderByVersionNumberDesc(postId);
+        return postVersionRepository.findByPostIdOrderByVersionNumberDesc(postId).stream()
+                .map(this::toVersionResponse)
+                .toList();
     }
 
     /**
      * 특정 버전 조회 (삭제된 게시글 포함)
      */
     @Transactional(readOnly = true)
-    public PostVersion getVersion(Long postId, Integer versionNumber) {
+    public PostVersionResponse getVersion(Long postId, Integer versionNumber) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new NotFoundException("Post not found: " + postId));
         
-        return postVersionRepository.findByPostIdAndVersionNumber(postId, versionNumber)
+        PostVersion version = postVersionRepository.findByPostIdAndVersionNumber(postId, versionNumber)
                 .orElseThrow(() -> new NotFoundException("Version not found: postId=" + postId + ", versionNumber=" + versionNumber));
+        return toVersionResponse(version);
     }
 
     /**

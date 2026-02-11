@@ -104,8 +104,9 @@ export default function PostDetailPage() {
                 
                 setPost(data);
                 
-                // 조회수 증가는 별도로 호출 (한 번만, ref로 중복 방지)
-                if (!viewCountIncremented && viewCountIncrementedRef.current !== postId) {
+                // 조회수 증가: 목록에서 게시글 클릭으로 진입한 경우에만 (from=list)
+                const fromList = sp.get("from") === "list";
+                if (fromList && !viewCountIncremented && viewCountIncrementedRef.current !== postId) {
                     viewCountIncremented = true;
                     viewCountIncrementedRef.current = postId;
                     // 조회수 증가는 백그라운드에서 실행 (에러가 발생해도 UI에 영향 없음)
@@ -140,7 +141,7 @@ export default function PostDetailPage() {
         return () => {
             cancelled = true;
         };
-    }, [postId]);
+    }, [postId, sp]);
 
     const bodyText = post?.contentMd ?? "";
 

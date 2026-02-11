@@ -5,6 +5,15 @@ spring:
       hibernate:
         ddl-auto: validate
         format_sql: true
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 200MB
+
+# multipart 요청당 part 개수 상한 (기본 50). md + 이미지 다수 선택 시 초과 방지
+server:
+  tomcat:
+    max-part-count: 500
 
 logging:
   level:

@@ -178,9 +178,7 @@ public class PostController {
     )
     @GetMapping("/{id}/versions")
     public List<com.fasoo.cs_doc.post.dto.PostVersionResponse> getVersions(@PathVariable Long id) {
-        return postService.getVersions(id).stream()
-                .map(com.fasoo.cs_doc.post.dto.PostVersionResponse::from)
-                .toList();
+        return postService.getVersions(id);
     }
 
     @Operation(
@@ -192,7 +190,7 @@ public class PostController {
             @PathVariable Long id,
             @PathVariable Integer versionNumber
     ) {
-        return com.fasoo.cs_doc.post.dto.PostVersionResponse.from(postService.getVersion(id, versionNumber));
+        return postService.getVersion(id, versionNumber);
     }
 
     @Operation(

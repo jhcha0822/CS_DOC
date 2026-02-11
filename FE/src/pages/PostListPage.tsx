@@ -384,7 +384,8 @@ export default function PostListPage() {
                                 </tr>
                             ) : (
                                 items.map((post, idx) => {
-                                    const detailUrl = `/posts/${post.id}?${createSearchParams(listSearchParams).toString()}`;
+                                    const detailParams = { ...listSearchParams, from: "list" };
+                                    const detailUrl = `/posts/${post.id}?${createSearchParams(detailParams).toString()}`;
                                     const isNotice = post.isNotice === true;
                                     return (
                                         <tr

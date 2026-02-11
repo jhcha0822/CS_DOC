@@ -47,6 +47,13 @@ public class PostContentStorage {
         return relative;
     }
 
+    /** 버전 md 파일 저장. posts/{postId}-{versionNumber}.md 형식 (예: posts/5-1.md, posts/5-2.md) */
+    public String writeVersion(Long postId, int versionNumber, String markdown) {
+        String relative = POSTS_DIR + "/" + postId + "-" + versionNumber + ".md";
+        overwrite(relative, markdown);
+        return relative;
+    }
+
     public String read(String relativePath) {
         Path absolute = resolveSafe(relativePath);
         try {

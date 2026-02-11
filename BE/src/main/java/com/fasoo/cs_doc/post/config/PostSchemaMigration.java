@@ -1,5 +1,6 @@
 package com.fasoo.cs_doc.post.config;
 
+import com.fasoo.cs_doc.post.service.PostContentStorage;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
@@ -10,6 +11,8 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 /**
  * 애플리케이션 기동 시 Post 테이블의 스키마 마이그레이션 수행.
  * - category 컬럼을 nullable로 변경
@@ -19,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
  * - deleted 컬럼 추가 (soft delete)
  * - current_version_id 컬럼 추가 (버전 관리)
  * - post_version 테이블 생성 (버전 관리)
+ * - post_version content_md → content_md_path (md 파일로 저장)
  */
 @Component
 @Order(2)
@@ -28,6 +32,12 @@ public class PostSchemaMigration implements ApplicationRunner {
 
     @PersistenceContext
     private EntityManager entityManager;
+
+    private final PostContentStorage storage;
+
+    public PostSchemaMigration(PostContentStorage storage) {
+        this.storage = storage;
+    }
 
     @Override
     @Transactional
@@ -118,7 +128,7 @@ public class PostSchemaMigration implements ApplicationRunner {
                 log.warn("Post current_version_id column migration failed: {}", e.getMessage());
             }
             
-            // 6. post_version 테이블 생성
+            // 6. post_version 테이블 생성 (content_md_path 사용)
             try {
                 String checkTableSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'POST_VERSION'";
                 Long count = ((Number) entityManager.createNativeQuery(checkTableSql).getSingleResult()).longValue();
@@ -130,7 +140,7 @@ public class PostSchemaMigration implements ApplicationRunner {
                             post_id BIGINT NOT NULL,
                             version_number INT NOT NULL,
                             title VARCHAR(200) NULL,
-                            content_md CLOB NOT NULL,
+                            content_md_path VARCHAR(500) NOT NULL,
                             created_by VARCHAR(100) NULL,
                             created_at TIMESTAMP NOT NULL,
                             CONSTRAINT fk_post_version_post FOREIGN KEY (post_id) REFERENCES post(id) ON DELETE CASCADE
@@ -149,7 +159,39 @@ public class PostSchemaMigration implements ApplicationRunner {
                 log.warn("Post post_version table migration failed: {}", e.getMessage());
             }
             
-            // 6-1. post_version 테이블에 title 컬럼 추가 (기존 테이블용)
+            // 6-1. post_version content_md → content_md_path 마이그레이션 (기존 DB용)
+            try {
+                String checkContentMdPath = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'POST_VERSION' AND COLUMN_NAME = 'CONTENT_MD_PATH'";
+                String checkContentMd = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'POST_VERSION' AND COLUMN_NAME = 'CONTENT_MD'";
+                Long hasPath = ((Number) entityManager.createNativeQuery(checkContentMdPath).getSingleResult()).longValue();
+                Long hasContent = ((Number) entityManager.createNativeQuery(checkContentMd).getSingleResult()).longValue();
+                
+                if (hasPath == 0 && hasContent > 0) {
+                    entityManager.createNativeQuery("ALTER TABLE post_version ADD COLUMN content_md_path VARCHAR(500) NULL").executeUpdate();
+                    @SuppressWarnings("unchecked")
+                    List<Object[]> rows = entityManager.createNativeQuery(
+                            "SELECT id, post_id, version_number, content_md FROM post_version"
+                    ).getResultList();
+                    for (Object[] row : rows) {
+                        Long id = ((Number) row[0]).longValue();
+                        Long postId = ((Number) row[1]).longValue();
+                        Integer versionNumber = ((Number) row[2]).intValue();
+                        String contentMd = row[3] != null ? row[3].toString() : "";
+                        String mdPath = storage.writeVersion(postId, versionNumber, contentMd);
+                        entityManager.createNativeQuery("UPDATE post_version SET content_md_path = :path WHERE id = :id")
+                                .setParameter("path", mdPath)
+                                .setParameter("id", id)
+                                .executeUpdate();
+                    }
+                    entityManager.createNativeQuery("ALTER TABLE post_version DROP COLUMN content_md").executeUpdate();
+                    entityManager.createNativeQuery("ALTER TABLE post_version ALTER COLUMN content_md_path VARCHAR(500) NOT NULL").executeUpdate();
+                    log.info("Post post_version content_md → content_md_path migration completed");
+                }
+            } catch (Exception e) {
+                log.warn("Post post_version content_md_path migration failed: {}", e.getMessage());
+            }
+            
+            // 6-2. post_version 테이블에 title 컬럼 추가 (기존 테이블용)
             try {
                 String checkTableSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'POST_VERSION'";
                 Long tableCount = ((Number) entityManager.createNativeQuery(checkTableSql).getSingleResult()).longValue();

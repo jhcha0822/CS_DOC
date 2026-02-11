@@ -38,10 +38,11 @@ public class PostVersion {
     private String title;
 
     /**
-     * 해당 버전의 마크다운 내용
+     * 해당 버전의 마크다운 파일 경로 (상대경로)
+     * 예: posts/5-1.md, posts/5-2.md (postId-versionNumber 형식)
      */
-    @Column(name = "content_md", nullable = false, columnDefinition = "CLOB")
-    private String contentMd;
+    @Column(name = "content_md_path", nullable = false, length = 500)
+    private String contentMdPath;
 
     /**
      * 변경을 일으킨 사용자 정보 (추후 확장)
@@ -55,11 +56,11 @@ public class PostVersion {
 
     protected PostVersion() {}
 
-    public PostVersion(Long postId, Integer versionNumber, String title, String contentMd) {
+    public PostVersion(Long postId, Integer versionNumber, String title, String contentMdPath) {
         this.postId = postId;
         this.versionNumber = versionNumber;
         this.title = title;
-        this.contentMd = contentMd;
+        this.contentMdPath = contentMdPath;
     }
 
     @PrePersist
@@ -71,7 +72,7 @@ public class PostVersion {
     public Long getPostId() { return postId; }
     public Integer getVersionNumber() { return versionNumber; }
     public String getTitle() { return title; }
-    public String getContentMd() { return contentMd; }
+    public String getContentMdPath() { return contentMdPath; }
     public String getCreatedBy() { return createdBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 
