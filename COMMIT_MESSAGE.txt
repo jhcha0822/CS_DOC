@@ -1,14 +1,57 @@
-feat: 조회수 목록 진입 시만 반영, 버전 md 파일 저장, multipart part 수 상한 확대
-
-FE
-- PostListPage: 상세 링크에 from=list 파라미터 추가
-- PostDetailPage: from=list일 때만 조회수 증가 API 호출 (작성/수정 후 상세 진입 시 미반영)
+feat: 댓글 기능 추가, 사용자 이름 표시 개선, 메모 기능 추가
 
 BE
-- PostVersion: content_md(CLOB) → content_md_path, 버전 본문을 posts/{postId}-{versionNumber}.md로 저장
-- PostContentStorage: writeVersion(postId, versionNumber, markdown) 추가
-- PostService: savePostVersion 파일 저장 후 경로만 DB 저장, toVersionResponse에서 경로로 content 읽어 응답
-- PostSchemaMigration: content_md_path 컬럼 추가, 기존 content_md 데이터 파일로 마이그레이션 후 컬럼 삭제
-- PostVersionResponse: from() 제거(서비스에서 응답 생성)
-- application.yml: spring.servlet.multipart max-file-size 50MB / max-request-size 200MB, server.tomcat.max-part-count 500
-- TomcatMultipartConfig: setMaxPartCount(500)으로 다중 파일 업로드 시 FileCountLimitExceededException 방지 (SB4 패키지 org.springframework.boot.tomcat.servlet 사용)
+- Comment 엔티티 추가: postId, content, createdBy, updatedBy, createdAt, updatedAt 필드 포함
+  - 게시글 버전과 무관하게 postId로 연결되어 게시글 버전 변경 시에도 댓글 유지
+- CommentRepository: findByPostIdOrderByCreatedAtAsc, countByPostId 메서드 추가
+- CommentService: 댓글 생성/수정/삭제/조회 기능 구현
+  - 수정: 작성자만 가능하도록 권한 체크 추가
+  - 삭제: 작성자 또는 ADMIN 권한 사용자만 가능하도록 권한 체크 추가
+  - 사용자 이름 조회 및 응답에 포함 (createdByName, updatedByName)
+- CommentController: /api/comments 엔드포인트 추가
+  - POST /api/comments: 댓글 생성
+  - GET /api/comments/post/{postId}: 게시글별 댓글 조회
+  - PATCH /api/comments/{id}: 댓글 수정
+  - DELETE /api/comments/{id}: 댓글 삭제 (X-User-Id 헤더 필수)
+- CommentSchemaMigration: comment 테이블 자동 생성 및 인덱스 추가 (post_id, created_at)
+- PostService: PostListItemResponse에 commentCount 필드 추가, toListItem에서 댓글 수 조회
+- WebMvcConfig: /uploads/** 경로를 실제 업로드 디렉토리로 매핑하는 리소스 핸들러 추가
+  - Windows 경로 호환 처리, file:// URL 형식으로 변환
+- AuthInterceptor: /uploads/** 경로를 인증 제외 목록에 추가하여 이미지 파일 공개 접근 가능
+- PostController.update: PostUpdateRequest에 없는 categoryId, isNotice 필드 참조 제거
+
+FE
+- api.ts: 댓글 관련 API 함수 추가
+  - getComments: 게시글별 댓글 목록 조회
+  - createComment: 댓글 생성
+  - updateComment: 댓글 수정
+  - deleteComment: 댓글 삭제
+- PostDetailPage: 게시글 상세 페이지 하단에 댓글 섹션 추가
+  - 댓글 작성 폼 (textarea + 등록 버튼)
+  - 댓글 목록 표시 (작성자 이름, 작성일시, 내용)
+  - 댓글 수정 기능: 인라인 편집 모드 (수정 버튼 클릭 시 textarea로 전환)
+  - 댓글 삭제 기능: 확인 다이얼로그 후 삭제
+  - 권한에 따른 버튼 표시 제어
+    - 수정 버튼: 댓글 작성자에게만 표시
+    - 삭제 버튼: 댓글 작성자 또는 ADMIN 권한 사용자에게만 표시
+  - 댓글 수 표시 (댓글 섹션 제목에 개수 포함)
+- PostListPage: 게시글 목록 테이블에 "댓글" 열 추가
+  - 첨부 열 옆에 댓글 수 표시
+  - PostListItem 타입에 commentCount 필드 추가
+- 사용자 이름 표시 개선
+  - 댓글 작성자/수정자 이름 표시 (createdByName, updatedByName)
+  - 게시글 최종 수정자 이름 표시 (updatedByName)
+  - 메모 최종 수정자 이름 표시 (updatedByName)
+- MemoPage: 메모 기능 추가
+  - 메모 CRUD 기능 구현 (생성/조회/수정/삭제)
+  - 메모 목록 및 상세 보기
+  - 메모 검색 기능
+  - 이미지 첨부 및 표시 기능
+    - 이미지 업로드 및 미리보기 (썸네일 80x80)
+    - 메모 상세 페이지에서 이미지 전체 크기 표시
+    - 이미지 클릭 시 모달 팝업으로 확대 표시
+    - 이미지 삭제 기능
+  - 이미지 URL 처리 개선
+    - 상대 경로인 경우 API_BASE를 붙여서 전체 URL 생성
+    - 이미지 로드 실패 시 에러 처리 및 콘솔 로그 출력, 이미지 숨김 처리
+    - 적용 위치: 새 메모 작성, 메모 수정, 메모 상세, 모달 확대 이미지

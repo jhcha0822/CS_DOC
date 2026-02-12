@@ -55,6 +55,18 @@ public class Post {
     @Column(name = "current_version_id", nullable = true)
     private Long currentVersionId;
 
+    /**
+     * 작성자 사용자 ID
+     */
+    @Column(name = "created_by", nullable = true)
+    private Long createdBy;
+
+    /**
+     * 수정자 사용자 ID
+     */
+    @Column(name = "updated_by", nullable = true)
+    private Long updatedBy;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -90,6 +102,8 @@ public class Post {
     public String getAttachments() { return attachments; }
     public Boolean getDeleted() { return deleted != null ? deleted : false; }
     public Long getCurrentVersionId() { return currentVersionId; }
+    public Long getCreatedBy() { return createdBy; }
+    public Long getUpdatedBy() { return updatedBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
 
@@ -164,5 +178,13 @@ public class Post {
 
     public void changeCurrentVersionId(Long currentVersionId) {
         this.currentVersionId = currentVersionId;
+    }
+
+    public void changeCreatedBy(Long createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public void changeUpdatedBy(Long updatedBy) {
+        this.updatedBy = updatedBy;
     }
 }

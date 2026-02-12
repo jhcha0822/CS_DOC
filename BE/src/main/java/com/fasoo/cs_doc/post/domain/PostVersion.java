@@ -45,11 +45,10 @@ public class PostVersion {
     private String contentMdPath;
 
     /**
-     * 변경을 일으킨 사용자 정보 (추후 확장)
-     * 현재는 null이지만, 사용자 인증 시스템이 추가되면 사용자 ID를 저장할 수 있습니다.
+     * 변경을 일으킨 사용자 ID
      */
-    @Column(name = "created_by", nullable = true, length = 100)
-    private String createdBy;
+    @Column(name = "created_by", nullable = true)
+    private Long createdBy;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -73,10 +72,10 @@ public class PostVersion {
     public Integer getVersionNumber() { return versionNumber; }
     public String getTitle() { return title; }
     public String getContentMdPath() { return contentMdPath; }
-    public String getCreatedBy() { return createdBy; }
+    public Long getCreatedBy() { return createdBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 
-    public void setCreatedBy(String createdBy) {
+    public void setCreatedBy(Long createdBy) {
         this.createdBy = createdBy;
     }
 }

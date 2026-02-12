@@ -19,7 +19,11 @@ logging:
   level:
     org.hibernate.SQL: debug
 
+# CS_DOC_BASE_DIR: 프로젝트 데이터 루트의 상위 디렉터리 (CS_DOC git root보다 한 단계 위 권장)
+# - 기본값: D:\Project (현재 PC)
+# - 다른 PC에서 사용 시: 환경변수 CS_DOC_BASE_DIR=원하는경로 설정
 app:
   storage:
-    md-root: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\md
-    upload-dir: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\uploads
+    base-dir: ${CS_DOC_BASE_DIR:D:\\Project}
+    md-root: ${app.storage.base-dir}/CS_DOC_DATA/md
+    upload-dir: ${app.storage.base-dir}/CS_DOC_DATA/uploads

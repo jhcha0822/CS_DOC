@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, createSearchParams, useSearchParams } from "react-router-dom";
 import { fetchCategories, fetchPosts, type CategoryItem, type PostListItem, type SearchIn } from "../lib/api";
 import { labelOfApiCategory } from "../lib/categories";
+import { logout, getCurrentUser } from "../lib/auth";
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20] as const;
 
@@ -252,20 +253,42 @@ export default function PostListPage() {
                 <div>
                     <div style={{ fontSize: 26, fontWeight: 900 }}>{categoriesLoading ? "불러오는 중..." : pageTitle}</div>
                 </div>
-                <Link
-                    to={`/posts/new?${createSearchParams(listSearchParams).toString()}`}
-                    style={{
-                        padding: "10px 14px",
-                        borderRadius: 10,
-                        border: "1px solid #444",
-                        textDecoration: "none",
-                        color: "#fff",
-                        background: "#2563eb",
-                        fontWeight: 800,
-                    }}
-                >
-                    등록
-                </Link>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontSize: 14, color: "var(--app-text)" }}>
+                        현재 로그인한 계정: {getCurrentUser()?.name || ""}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={logout}
+                        style={{
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: "1px solid #444",
+                            color: "#111",
+                            background: "#fff",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            fontSize: 14,
+                        }}
+                    >
+                        로그아웃
+                    </button>
+                    <Link
+                        to={`/posts/new?${createSearchParams(listSearchParams).toString()}`}
+                        style={{
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: "1px solid #444",
+                            textDecoration: "none",
+                            color: "#fff",
+                            background: "#2563eb",
+                            fontWeight: 600,
+                            fontSize: 14,
+                        }}
+                    >
+                        게시글 등록
+                    </Link>
+                </div>
             </div>
 
 
@@ -373,12 +396,13 @@ export default function PostListPage() {
                                 <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700 }}>작성일</th>
                                 <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 700 }}>조회</th>
                                 <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 700 }}>첨부</th>
+                                <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 700 }}>댓글</th>
                             </tr>
                         </thead>
                         <tbody>
                             {items.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} style={{ padding: 24, textAlign: "center", opacity: 0.8 }}>
+                                    <td colSpan={6} style={{ padding: 24, textAlign: "center", opacity: 0.8 }}>
                                         게시글이 없습니다.
                                     </td>
                                 </tr>
@@ -415,7 +439,10 @@ export default function PostListPage() {
                                                     {post.title}
                                                 </Link>
                                             </td>
-                                            <td style={{ padding: "12px 14px" }}>{formatKST(post.createdAt)}</td>
+                                            <td style={{ padding: "12px 14px" }}>
+                                                {formatKST(post.createdAt)}
+                                                {post.updatedByName && <span style={{ marginLeft: 6, opacity: 0.7 }}>· {post.updatedByName}</span>}
+                                            </td>
                                             <td style={{ padding: "12px 14px", textAlign: "center" }}>
                                                 {post.viewCount ?? 0}
                                             </td>
@@ -454,6 +481,9 @@ export default function PostListPage() {
                                                     }
                                                     return "-";
                                                 })()}
+                                            </td>
+                                            <td style={{ padding: "12px 14px", textAlign: "center" }}>
+                                                {post.commentCount ?? 0}
                                             </td>
                                         </tr>
                                     );

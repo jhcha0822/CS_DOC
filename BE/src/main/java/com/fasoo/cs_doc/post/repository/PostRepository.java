@@ -15,6 +15,10 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     Page<Post> findByCategoryIdInAndTitleContainingIgnoreCase(List<Long> categoryIds, String keyword, Pageable pageable);
     List<Post> findByCategoryIdInOrderByCreatedAtDesc(List<Long> categoryIds);
     
+    // 삭제되지 않은 게시글 조회 (공지사항 포함, 카테고리 필터)
+    Page<Post> findByDeletedFalseAndCategoryIdIn(List<Long> categoryIds, Pageable pageable);
+    Page<Post> findByDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(List<Long> categoryIds, String keyword, Pageable pageable);
+    
     // 공지사항 조회 (isNotice = true, 최신순)
     List<Post> findByIsNoticeTrueOrderByCreatedAtDesc();
     

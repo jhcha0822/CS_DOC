@@ -64,8 +64,19 @@ public class PostController {
      */
     @Operation(hidden = true)
     @PutMapping("/{id}")
-    public PostResponse update(@PathVariable Long id, @RequestBody @Valid PostUpdateRequest req) {
-        return postService.update(id, req);
+    public PostResponse update(
+            @PathVariable Long id,
+            @RequestBody @Valid PostUpdateRequest req,
+            @RequestHeader(value = "X-User-Id", required = false) Long headerUserId
+    ) {
+        // 헤더에서 받은 userId를 사용 (요청 본문의 userId보다 우선)
+        Long userId = headerUserId != null ? headerUserId : req.userId();
+        PostUpdateRequest updatedReq = new PostUpdateRequest(
+                req.title(),
+                req.contentMd(),
+                userId
+        );
+        return postService.update(id, updatedReq);
     }
 
     @Operation(
@@ -107,11 +118,12 @@ public class PostController {
             @RequestParam(value = "categoryId") Long categoryId,
             @RequestParam(value = "isNotice", required = false) Boolean isNotice,
             @RequestParam(value = "images", required = false) List<MultipartFile> images,
-            @RequestParam(value = "attachments", required = false) List<MultipartFile> attachments
+            @RequestParam(value = "attachments", required = false) List<MultipartFile> attachments,
+            @RequestParam(value = "userId", required = false) Long userId
     ) {
         org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PostController.class);
-        log.info("createByUpload received - categoryId={}, title={}, isNotice={}", categoryId, title, isNotice);
-        return postService.createByUpload(file, title, null, categoryId, isNotice, images, attachments);
+        log.info("createByUpload received - categoryId={}, title={}, isNotice={}, userId={}", categoryId, title, isNotice, userId);
+        return postService.createByUpload(file, title, null, categoryId, isNotice, images, attachments, userId);
     }
 
     @Operation(
@@ -124,9 +136,13 @@ public class PostController {
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "title", required = false) String title,
             @RequestParam(value = "images", required = false) List<MultipartFile> images,
-            @RequestParam(value = "attachments", required = false) List<MultipartFile> attachments
+            @RequestParam(value = "attachments", required = false) List<MultipartFile> attachments,
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestHeader(value = "X-User-Id", required = false) Long headerUserId
     ) {
-        return postService.updateByUpload(id, file, title, images, attachments);
+        // 헤더에서 받은 userId를 사용 (요청 파라미터의 userId보다 우선)
+        Long finalUserId = headerUserId != null ? headerUserId : userId;
+        return postService.updateByUpload(id, file, title, images, attachments, finalUserId);
     }
 
     @Operation(
@@ -145,9 +161,19 @@ public class PostController {
     @PatchMapping("/{id}")
     public PostResponse patch(
             @PathVariable Long id,
-            @RequestBody PostPatchRequest req
+            @RequestBody PostPatchRequest req,
+            @RequestHeader(value = "X-User-Id", required = false) Long headerUserId
     ) {
-        return postService.patch(id, req);
+        // 헤더에서 받은 userId를 사용 (요청 본문의 userId보다 우선)
+        Long userId = headerUserId != null ? headerUserId : req.userId();
+        PostPatchRequest updatedReq = new PostPatchRequest(
+                req.title(),
+                req.categoryId(),
+                req.markdown(),
+                req.isNotice(),
+                userId
+        );
+        return postService.patch(id, updatedReq);
     }
 
     @Operation(
@@ -157,9 +183,10 @@ public class PostController {
     @PostMapping(value = "/{id}/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public PostResponse addAttachments(
             @PathVariable Long id,
-            @RequestParam("attachments") List<MultipartFile> attachments
+            @RequestParam("attachments") List<MultipartFile> attachments,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId
     ) {
-        return postService.addAttachments(id, attachments);
+        return postService.addAttachments(id, attachments, userId);
     }
 
     @Operation(
@@ -168,8 +195,11 @@ public class PostController {
     )
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long id) {
-        postService.delete(id);
+    public void delete(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId
+    ) {
+        postService.delete(id, userId);
     }
 
     @Operation(

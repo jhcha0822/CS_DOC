@@ -14,5 +14,6 @@ public record PostDetailResponse(
         Long viewCount,
         String attachments, // JSON array of attachment URLs
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        String updatedByName // 최종 수정자 이름
 ) {}

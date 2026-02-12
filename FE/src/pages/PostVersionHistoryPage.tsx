@@ -681,7 +681,7 @@ export default function PostVersionHistoryPage() {
                                         </div>
                                         <div style={{ fontSize: 12, opacity: 0.7 }}>
                                             생성: {formatKST(version.createdAt)}
-                                            {version.createdBy && ` | 작성자: ${version.createdBy}`}
+                                            {version.createdByName && ` | 작성자: ${version.createdByName}`}
                                         </div>
                                     </div>
                                 ))}
@@ -765,6 +765,7 @@ export default function PostVersionHistoryPage() {
                                         <th style={{ padding: "10px", textAlign: "left", fontWeight: 700 }}>구분</th>
                                         <th style={{ padding: "10px", textAlign: "left", fontWeight: 700 }}>제목</th>
                                         <th style={{ padding: "10px", textAlign: "left", fontWeight: 700 }}>수정일</th>
+                                        <th style={{ padding: "10px", textAlign: "left", fontWeight: 700 }}>사용자</th>
                                         <th style={{ padding: "10px", textAlign: "left", fontWeight: 700 }}>버전</th>
                                         <th style={{ padding: "10px", textAlign: "left", fontWeight: 700 }}>첨부</th>
                                     </tr>
@@ -792,6 +793,7 @@ export default function PostVersionHistoryPage() {
                                                 <td style={{ padding: "10px 12px" }}>{item.changeType}</td>
                                                 <td style={{ padding: "10px 12px", fontWeight: 600 }}>{item.postTitle ?? "-"}</td>
                                                 <td style={{ padding: "10px 12px" }}>{formatKST(item.changeDate).split(" ")[0]}</td>
+                                                <td style={{ padding: "10px 12px" }}>{item.changedBy || "-"}</td>
                                                 <td style={{ padding: "10px 12px" }}>{item.versionNumber ?? "-"}</td>
                                                 <td style={{ padding: "10px 12px", fontSize: 12 }}>
                                                     {hasAttachments ? (

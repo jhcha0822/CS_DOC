@@ -4,7 +4,9 @@ import com.fasoo.cs_doc.category.domain.Category;
 import com.fasoo.cs_doc.category.repository.CategoryRepository;
 import com.fasoo.cs_doc.global.exception.NotFoundException;
 import com.fasoo.cs_doc.global.page.PageResponse;
+import com.fasoo.cs_doc.member.repository.MemberRepository;
 import com.fasoo.cs_doc.post.domain.Post;
+import com.fasoo.cs_doc.post.repository.CommentRepository;
 import com.fasoo.cs_doc.post.domain.PostCategory;
 import com.fasoo.cs_doc.post.domain.PostVersion;
 import com.fasoo.cs_doc.post.dto.*;
@@ -40,17 +42,21 @@ public class PostService {
     private final CategoryRepository categoryRepository;
     private final MarkdownImageProcessor imageProcessor;
     private final AttachmentStorage attachmentStorage;
+    private final MemberRepository memberRepository;
+    private final CommentRepository commentRepository;
 
     @PersistenceContext
     private EntityManager entityManager;
 
-    public PostService(PostRepository postRepository, PostVersionRepository postVersionRepository, PostContentStorage storage, CategoryRepository categoryRepository, MarkdownImageProcessor imageProcessor, AttachmentStorage attachmentStorage) {
+    public PostService(PostRepository postRepository, PostVersionRepository postVersionRepository, PostContentStorage storage, CategoryRepository categoryRepository, MarkdownImageProcessor imageProcessor, AttachmentStorage attachmentStorage, MemberRepository memberRepository, CommentRepository commentRepository) {
         this.postRepository = postRepository;
         this.postVersionRepository = postVersionRepository;
         this.storage = storage;
         this.categoryRepository = categoryRepository;
         this.imageProcessor = imageProcessor;
         this.attachmentStorage = attachmentStorage;
+        this.memberRepository = memberRepository;
+        this.commentRepository = commentRepository;
     }
 
     /**
@@ -107,6 +113,9 @@ public class PostService {
         // 기존 데이터 호환성을 위해 category가 있으면 사용, 없으면 null
         PostCategory category = p.getCategory(); // nullable
         
+        String updatedByName = getUserName(p.getUpdatedBy());
+        long commentCount = commentRepository.countByPostId(p.getId());
+        
         return new PostListItemResponse(
                 p.getId(),
                 p.getTitle(),
@@ -116,8 +125,17 @@ public class PostService {
                 p.getViewCount(),
                 p.getAttachments(),
                 p.getCreatedAt(),
-                p.getUpdatedAt()
+                p.getUpdatedAt(),
+                updatedByName,
+                commentCount
         );
+    }
+
+    private String getUserName(Long userId) {
+        if (userId == null) return null;
+        return memberRepository.findById(userId)
+                .map(m -> m.getName())
+                .orElse(null);
     }
 
     private PostResponse toResponse(Post post) {
@@ -173,6 +191,9 @@ public class PostService {
             List<Long> targetCategoryIds = getCategoryIdsIncludingChildren(categoryId);
             log.debug("PostService.list - categoryId={}, targetCategoryIds={} (총 {}개)", categoryId, targetCategoryIds, targetCategoryIds.size());
 
+            // 공지사항 카테고리인지 확인
+            boolean isNoticeCategory = "CAT_NOTICE".equals(selectedCategory.getCode()) || "공지사항".equals(selectedCategory.getLabel());
+
             // 선택된 카테고리와 하위 카테고리들의 code를 PostCategory enum으로 매핑 (기존 데이터 호환성)
             List<PostCategory> legacyCategories = new ArrayList<>();
             PostCategory selectedLegacy = categoryCodeToPostCategory(selectedCategory.getCode());
@@ -194,7 +215,12 @@ public class PostService {
             // category_id 기반 + legacy category(enum) 별도 조회 후 병합
             Pageable largePageable = org.springframework.data.domain.PageRequest.of(0, 10000, pageable.getSort());
             if (kw == null || kw.isBlank()) {
-                page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdIn(targetCategoryIds, largePageable);
+                // 공지사항 카테고리인 경우 공지사항도 포함하여 조회
+                if (isNoticeCategory) {
+                    page = postRepository.findByDeletedFalseAndCategoryIdIn(targetCategoryIds, largePageable);
+                } else {
+                    page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdIn(targetCategoryIds, largePageable);
+                }
                 for (PostCategory legacyCategory : legacyCategories) {
                     List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategory(legacyCategory, largePageable)
                             .getContent().stream()
@@ -203,7 +229,12 @@ public class PostService {
                     legacyPosts.addAll(batch);
                 }
             } else {
-                page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(targetCategoryIds, kw, largePageable);
+                // 공지사항 카테고리인 경우 공지사항도 포함하여 조회
+                if (isNoticeCategory) {
+                    page = postRepository.findByDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(targetCategoryIds, kw, largePageable);
+                } else {
+                    page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(targetCategoryIds, kw, largePageable);
+                }
                 for (PostCategory legacyCategory : legacyCategories) {
                     List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryAndTitleContainingIgnoreCase(legacyCategory, kw, largePageable)
                             .getContent().stream()
@@ -214,10 +245,12 @@ public class PostService {
             }
         } else {
             // categoryId가 없으면 전체 조회 (공지사항 제외, 삭제되지 않은 것만)
+            // 메모리 페이징을 위해 전체 데이터를 먼저 가져옴
+            Pageable largePageable = org.springframework.data.domain.PageRequest.of(0, 10000, pageable.getSort());
             if (kw == null || kw.isBlank()) {
-                page = postRepository.findByIsNoticeFalseAndDeletedFalse(adjustedPageable);
+                page = postRepository.findByIsNoticeFalseAndDeletedFalse(largePageable);
             } else {
-                page = postRepository.findByIsNoticeFalseAndDeletedFalseAndTitleContainingIgnoreCase(kw, adjustedPageable);
+                page = postRepository.findByIsNoticeFalseAndDeletedFalseAndTitleContainingIgnoreCase(kw, largePageable);
             }
         }
 
@@ -261,10 +294,8 @@ public class PostService {
             allItems = pagedItems;
         }
         
-        // 전체 개수 (categoryId 조회 시 병합 결과, 전체 조회 시 Page 반영)
-        long totalCombinedElements = (categoryId != null)
-                ? combinedItems.size()
-                : page.getTotalElements();
+        // 전체 개수 (메모리 페이징을 위해 combinedItems.size() 사용)
+        long totalCombinedElements = combinedItems.size();
         long totalElements = noticeCount + totalCombinedElements;
         int totalPages = (int) Math.ceil((double) totalCombinedElements / pageable.getPageSize());
 
@@ -302,6 +333,11 @@ public class PostService {
         post.changeIsNotice(req.isNotice() != null ? req.isNotice() : false);
         // 데이터베이스 스키마 호환성을 위해 category 필드에 기본값 설정 (deprecated)
         post.changeCategory(PostCategory.TRAINING);
+        // 작성자 정보 기록
+        if (req.userId() != null) {
+            post.changeCreatedBy(req.userId());
+            post.changeUpdatedBy(req.userId());
+        }
         
         Post saved = postRepository.save(post);
 
@@ -309,7 +345,7 @@ public class PostService {
         saved.changeContentMdPath(mdPath);
 
         // 버전 정보 저장 (초기 버전)
-        savePostVersion(saved.getId(), req.title(), req.contentMd(), true);
+        savePostVersion(saved.getId(), req.title(), req.contentMd(), true, saved.getUpdatedBy());
 
         return toResponse(saved);
     }
@@ -329,6 +365,8 @@ public class PostService {
                 ? null
                 : storage.read(mdPath);
 
+        String updatedByName = getUserName(post.getUpdatedBy());
+        
         return new PostDetailResponse(
                 post.getId(),
                 post.getTitle(),
@@ -339,7 +377,8 @@ public class PostService {
                 post.getViewCount(),
                 post.getAttachments(),
                 post.getCreatedAt(),
-                post.getUpdatedAt()
+                post.getUpdatedAt(),
+                updatedByName
         );
     }
 
@@ -371,17 +410,23 @@ public class PostService {
         String mdPath = post.getContentMdPath();
         if (mdPath == null) throw new IllegalStateException("Post contentMdPath is null: " + id);
 
+        // 수정자 정보 기록
+        if (req.userId() != null) {
+            post.changeUpdatedBy(req.userId());
+        }
+        postRepository.save(post);
+
         post.changeTitle(req.title());
         storage.overwrite(mdPath, req.contentMd());
         
         // 내용 변경 시 새 버전 저장
-        savePostVersion(post.getId(), req.title(), req.contentMd(), true);
+        savePostVersion(post.getId(), req.title(), req.contentMd(), true, post.getUpdatedBy());
         
         return toResponse(post);
     }
 
     @Transactional
-    public PostResponse createByUpload(MultipartFile file, String title, PostCategory category, Long categoryId, Boolean isNotice, List<MultipartFile> images, List<MultipartFile> attachments) {
+    public PostResponse createByUpload(MultipartFile file, String title, PostCategory category, Long categoryId, Boolean isNotice, List<MultipartFile> images, List<MultipartFile> attachments, Long userId) {
         String md = readMarkdownFromMultipart(file);
         
         // 업로드된 이미지 파일들을 파일명으로 매핑
@@ -407,6 +452,11 @@ public class PostService {
         post.changeIsNotice(isNotice != null ? isNotice : false);
         // 데이터베이스 스키마 호환성을 위해 category 필드에 기본값 설정 (deprecated)
         post.changeCategory(PostCategory.TRAINING);
+        // 작성자 정보 기록
+        if (userId != null) {
+            post.changeCreatedBy(userId);
+            post.changeUpdatedBy(userId);
+        }
         
         // 첨부파일 저장
         if (attachments != null && !attachments.isEmpty()) {
@@ -424,7 +474,7 @@ public class PostService {
         saved.changeContentMdPath(mdPath);
 
         // 버전 정보 저장 (초기 버전)
-        savePostVersion(saved.getId(), finalTitle, md, true);
+        savePostVersion(saved.getId(), finalTitle, md, true, saved.getUpdatedBy());
 
         return toResponse(saved);
     }
@@ -475,7 +525,7 @@ public class PostService {
     }
 
     @Transactional
-    public PostResponse updateByUpload(Long id, MultipartFile file, String title, List<MultipartFile> images, List<MultipartFile> attachments) {
+    public PostResponse updateByUpload(Long id, MultipartFile file, String title, List<MultipartFile> images, List<MultipartFile> attachments, Long userId) {
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Post not found: " + id));
 
@@ -525,8 +575,14 @@ public class PostService {
             storage.overwrite(mdPath, markdown);
         }
         
+        // 수정자 정보 기록
+        if (userId != null) {
+            post.changeUpdatedBy(userId);
+        }
+        postRepository.save(post);
+
         // 내용 변경 시 새 버전 저장
-        savePostVersion(post.getId(), post.getTitle(), markdown, true);
+        savePostVersion(post.getId(), post.getTitle(), markdown, true, post.getUpdatedBy());
 
         return toResponse(post);
     }
@@ -665,6 +721,12 @@ public class PostService {
             post.changeIsNotice(req.isNotice());
         }
 
+        // 수정자 정보 기록
+        if (req.userId() != null) {
+            post.changeUpdatedBy(req.userId());
+        }
+        postRepository.save(post);
+
         // 3) markdown 갱신(경로 없으면 기존 글 전용 메서드로 경로 생성·덮어쓰기)
         if (req.markdown() != null) {
             String mdPath = post.getContentMdPath();
@@ -678,18 +740,18 @@ public class PostService {
             
             // 내용 변경 시 새 버전 저장
             String versionTitle = req.title() != null && !req.title().isBlank() ? req.title() : post.getTitle();
-            savePostVersion(post.getId(), versionTitle, req.markdown(), true);
+            savePostVersion(post.getId(), versionTitle, req.markdown(), true, post.getUpdatedBy());
         } else {
             // 제목/카테고리 등 메타데이터만 변경된 경우에도 버전 저장
             String versionTitle = req.title() != null && !req.title().isBlank() ? req.title() : post.getTitle();
-            savePostVersionForMetadataChange(post.getId(), versionTitle);
+            savePostVersionForMetadataChange(post.getId(), versionTitle, post.getUpdatedBy());
         }
 
         return toResponse(post);
     }
 
     @Transactional
-    public PostResponse addAttachments(Long id, List<MultipartFile> attachments) {
+    public PostResponse addAttachments(Long id, List<MultipartFile> attachments, Long userId) {
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Post not found: " + id));
 
@@ -711,7 +773,7 @@ public class PostService {
             postRepository.save(post);
             
             // 첨부파일 변경 시에도 버전 저장
-            savePostVersionForMetadataChange(post.getId(), post.getTitle());
+            savePostVersionForMetadataChange(post.getId(), post.getTitle(), post.getUpdatedBy());
             
             return toResponse(post);
         } catch (IOException e) {
@@ -737,7 +799,7 @@ public class PostService {
      * 제목/첨부파일 등 메타데이터만 변경된 경우에도 버전 저장.
      * 현재 본문 내용을 읽어서 새 버전 생성.
      */
-    private void savePostVersionForMetadataChange(Long postId, String title) {
+    private void savePostVersionForMetadataChange(Long postId, String title, Long userId) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new NotFoundException("Post not found: " + postId));
         String mdPath = post.getContentMdPath();
@@ -745,7 +807,7 @@ public class PostService {
                 ? storage.read(mdPath)
                 : "";
         if (contentMd == null) contentMd = "";
-        savePostVersion(postId, title, contentMd, false); // 메타데이터 변경은 본문 동일해도 저장
+        savePostVersion(postId, title, contentMd, false, userId); // 메타데이터 변경은 본문 동일해도 저장
     }
 
     /**
@@ -754,6 +816,16 @@ public class PostService {
      * @param skipIfContentSame true면 본문이 최신 버전과 동일할 때 저장 생략 (중복 방지)
      */
     private void savePostVersion(Long postId, String title, String contentMd, boolean skipIfContentSame) {
+        savePostVersion(postId, title, contentMd, skipIfContentSame, null);
+    }
+
+    /**
+     * 게시글 내용 변경 시 새 버전 저장 (사용자 ID 포함).
+     * 본문은 md 파일(posts/{postId}-{versionNumber}.md)로 저장하고, DB에는 경로만 저장.
+     * @param skipIfContentSame true면 본문이 최신 버전과 동일할 때 저장 생략 (중복 방지)
+     * @param userId 변경을 일으킨 사용자 ID
+     */
+    private void savePostVersion(Long postId, String title, String contentMd, boolean skipIfContentSame, Long userId) {
         if (contentMd == null || contentMd.isBlank()) {
             return; // 내용이 없으면 버전 저장하지 않음
         }
@@ -770,6 +842,9 @@ public class PostService {
         Integer nextVersionNumber = postVersionRepository.getNextVersionNumber(postId);
         String mdPath = storage.writeVersion(postId, nextVersionNumber, contentMd);
         PostVersion version = new PostVersion(postId, nextVersionNumber, title, mdPath);
+        if (userId != null) {
+            version.setCreatedBy(userId);
+        }
         PostVersion savedVersion = postVersionRepository.save(version);
         
         // Post 엔티티의 currentVersionId 업데이트
@@ -792,6 +867,7 @@ public class PostService {
 
     private PostVersionResponse toVersionResponse(PostVersion version) {
         String contentMd = readVersionContent(version);
+        String createdByName = getUserName(version.getCreatedBy());
         return new PostVersionResponse(
                 version.getId(),
                 version.getPostId(),
@@ -799,6 +875,7 @@ public class PostService {
                 version.getTitle(),
                 contentMd != null ? contentMd : "",
                 version.getCreatedBy(),
+                createdByName,
                 version.getCreatedAt()
         );
     }
@@ -922,16 +999,17 @@ public class PostService {
             
             PostListItemResponse postItem = toListItem(post);
             String type = version.getVersionNumber() == 1 ? "생성" : "수정";
+            String changedByName = getUserName(version.getCreatedBy());
             
             if (changeType == null || changeType.equals(type)) {
                 String versionTitle = version.getTitle();
                 if (type.equals("생성")) {
                     history.add(com.fasoo.cs_doc.post.dto.ChangeHistoryItem.create(
-                            postItem, version.getVersionNumber(), version.getCreatedAt(), versionTitle
+                            postItem, version.getVersionNumber(), version.getCreatedAt(), versionTitle, changedByName
                     ));
                 } else {
                     history.add(com.fasoo.cs_doc.post.dto.ChangeHistoryItem.update(
-                            postItem, version.getVersionNumber(), version.getCreatedAt(), versionTitle
+                            postItem, version.getVersionNumber(), version.getCreatedAt(), versionTitle, changedByName
                     ));
                 }
             }
@@ -942,7 +1020,8 @@ public class PostService {
             List<Post> deletedPosts = postRepository.findByDeletedTrueOrderByUpdatedAtDesc();
             for (Post deletedPost : deletedPosts) {
                 PostListItemResponse postItem = toListItem(deletedPost);
-                history.add(com.fasoo.cs_doc.post.dto.ChangeHistoryItem.delete(postItem));
+                String deletedByName = getUserName(deletedPost.getUpdatedBy());
+                history.add(com.fasoo.cs_doc.post.dto.ChangeHistoryItem.delete(postItem, deletedByName));
             }
         }
         
@@ -976,7 +1055,7 @@ public class PostService {
      * 삭제된 게시글은 목록에서 보이지 않지만 데이터베이스에는 유지되어 추후 복구 가능합니다.
      */
     @Transactional
-    public void delete(Long id) {
+    public void delete(Long id, Long userId) {
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Post not found: " + id));
         

@@ -1,7 +1,23 @@
-import { Outlet } from "react-router-dom";
+import { useEffect } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
 import SideNav from "../components/SideNav";
+import { getCurrentUser } from "../lib/auth";
 
 export default function AppLayout() {
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        const user = getCurrentUser();
+        if (!user) {
+            navigate("/login", { replace: true });
+        }
+    }, [navigate]);
+
+    const user = getCurrentUser();
+    if (!user) {
+        return null; // 리다이렉트 중
+    }
+
     return (
         <div
             className="app-layout"

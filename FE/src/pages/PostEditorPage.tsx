@@ -12,10 +12,11 @@ import {
     ApiError,
     type CategoryItem,
 } from "../lib/api";
+import { getCurrentUser } from "../lib/auth";
 import MDEditor from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
 
-/** 게시글 작성/수정 시 선택 가능한 카테고리 = 전체 하위 카테고리 (depth !== 0) + 공지사항 카테고리. TEST_child* 등 모두 포함 */
+/** 게시글 작성/수정 시 선택 가능한 카테고리 = 전체 하위 카테고리 (depth !== 0) + 공지사항 카테고리. 왼쪽 사이드바와 동일한 순서로 정렬 */
 function useEditableCategories(): CategoryItem[] {
     const [categories, setCategories] = useState<CategoryItem[]>([]);
     useEffect(() => {
@@ -24,13 +25,58 @@ function useEditableCategories(): CategoryItem[] {
             .catch(() => setCategories([]));
     }, []);
     return useMemo(() => {
-        const noticeCategory = categories.find(c => c.label === "공지사항" || c.code === "CAT_NOTICE");
-        const subCategories = categories.filter((c) => c.depth !== 0);
+        // 왼쪽 사이드바와 동일한 정렬 로직 적용
+        const sortedCategories = [...categories].sort((a, b) => {
+            if (a.depth !== b.depth) return a.depth - b.depth;
+            if (a.depth === 0) return a.sortOrder - b.sortOrder;
+            if (a.parentId !== b.parentId) {
+                const aParent = categories.find((c) => c.id === a.parentId);
+                const bParent = categories.find((c) => c.id === b.parentId);
+                if (aParent && bParent) {
+                    const parentOrder = aParent.sortOrder - bParent.sortOrder;
+                    if (parentOrder !== 0) return parentOrder;
+                }
+                return (a.parentId ?? 0) - (b.parentId ?? 0);
+            }
+            return a.sortOrder - b.sortOrder;
+        });
+
+        const noticeCategory = sortedCategories.find(c => c.label === "공지사항" || c.code === "CAT_NOTICE");
+        const subCategories = sortedCategories.filter((c) => c.depth !== 0);
+        
         // 공지사항 카테고리가 있으면 맨 앞에 추가
         if (noticeCategory) {
             return [noticeCategory, ...subCategories];
         }
         return subCategories;
+    }, [categories]);
+}
+
+/** 드롭다운 렌더링용: 카테고리 목록을 상위 카테고리별로 그룹화하고 구분선 추가 */
+function useCategoryOptionsForDropdown(categories: CategoryItem[]): Array<{ type: 'category', category: CategoryItem } | { type: 'separator' }> {
+    return useMemo(() => {
+        const result: Array<{ type: 'category', category: CategoryItem } | { type: 'separator' }> = [];
+        let lastParentId: number | null | undefined = undefined;
+        
+        for (let i = 0; i < categories.length; i++) {
+            const category = categories[i];
+            const currentParentId = category.parentId;
+            const isNotice = category.label === "공지사항" || category.code === "CAT_NOTICE";
+            
+            // 공지사항 다음 항목이면 구분선 추가
+            if (i > 0 && categories[i - 1] && (categories[i - 1].label === "공지사항" || categories[i - 1].code === "CAT_NOTICE")) {
+                result.push({ type: 'separator' });
+            }
+            // 상위 카테고리가 변경되면 구분선 추가 (공지사항 다음이 아닌 경우만)
+            else if (lastParentId !== undefined && currentParentId !== lastParentId) {
+                result.push({ type: 'separator' });
+            }
+            
+            result.push({ type: 'category', category });
+            lastParentId = currentParentId;
+        }
+        
+        return result;
     }, [categories]);
 }
 
@@ -53,6 +99,7 @@ export default function PostEditorPage() {
     }, [catParam, qParam]);
 
     const editableCategories = useEditableCategories();
+    const categoryOptions = useCategoryOptionsForDropdown(editableCategories);
     /** 드롭다운 선택용. ID로 두어 모든 하위 카테고리를 개별 선택 가능하게 함 */
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
     const [isNotice, setIsNotice] = useState<boolean>(false);
@@ -224,12 +271,14 @@ export default function PostEditorPage() {
         setUploading(true);
         setError(null);
         try {
+            const currentUser = getCurrentUser();
             const created = await createPostByUpload(selectedFile, {
                 title: title.trim() || undefined,
                 categoryId: selectedCategoryId,
                 isNotice: isNotice,
                 images: selectedImages.length > 0 ? selectedImages : undefined,
                 attachments: selectedAttachments.length > 0 ? selectedAttachments : undefined,
+                userId: currentUser?.id,
             });
             navigate(`/posts/${created.id}?${createSearchParams(searchParams).toString()}`);
         } catch (e) {
@@ -300,10 +349,12 @@ export default function PostEditorPage() {
                     setUploading(true);
                     setError(null);
                     try {
+                        const currentUser = getCurrentUser();
                         await updateContentByUpload(postId, file, {
                             title: title.trim() || undefined,
                             images: images.length > 0 ? images : undefined,
                             attachments: selectedAttachments.length > 0 ? selectedAttachments : undefined,
+                            userId: currentUser?.id,
                         });
                         const contentRes = await fetchPostContent(postId);
                         setMarkdown(contentRes.markdown ?? "");
@@ -347,6 +398,7 @@ export default function PostEditorPage() {
         setSaving(true);
         setError(null);
         try {
+            const currentUser = getCurrentUser();
             if (isEdit) {
                 await patchPost(postId, {
                     title: trimmedTitle,
@@ -354,15 +406,18 @@ export default function PostEditorPage() {
                     markdown: markdown || undefined,
                     isNotice: isNotice,
                     attachments: selectedAttachments.length > 0 ? selectedAttachments : undefined,
+                    userId: currentUser?.id,
                 });
                 navigate(`/posts/${postId}?${createSearchParams(searchParams).toString()}`);
             } else {
+                const currentUser = getCurrentUser();
                 const created = await createPost({
                     title: trimmedTitle,
                     categoryId: selectedCategoryId,
                     contentMd: markdown.trim() || "\n",
                     isNotice: isNotice,
                     attachments: selectedAttachments.length > 0 ? selectedAttachments : undefined,
+                    userId: currentUser?.id,
                 });
                 navigate(`/posts/${created.id}?${createSearchParams(searchParams).toString()}`);
             }
@@ -500,11 +555,20 @@ export default function PostEditorPage() {
                             }}
                         >
                             <option value="">카테고리를 선택하세요</option>
-                            {editableCategories.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                    {c.label}
-                                </option>
-                            ))}
+                            {categoryOptions.map((item, idx) => {
+                                if (item.type === 'separator') {
+                                    return (
+                                        <option key={`sep-${idx}`} disabled style={{ background: '#f0f0f0' }}>
+                                            ================
+                                        </option>
+                                    );
+                                }
+                                return (
+                                    <option key={item.category.id} value={item.category.id}>
+                                        {item.category.label}
+                                    </option>
+                                );
+                            })}
                         </select>
                     </div>
                     <div style={{ flexShrink: 0 }}>

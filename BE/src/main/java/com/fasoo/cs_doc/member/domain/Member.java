@@ -20,7 +20,23 @@ public class Member {
     @Column(nullable = false, length = 100)
     private String password;
 
+    @Column(nullable = false, length = 100)
+    private String name;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    @Builder.Default
+    private UserRole role = UserRole.USER;
+
     public void changePassword(String encodedPassword) {
         this.password = encodedPassword;
+    }
+
+    public void changeRole(UserRole role) {
+        this.role = role;
+    }
+
+    public void changeName(String name) {
+        this.name = name;
     }
 }

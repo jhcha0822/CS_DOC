@@ -13,5 +13,7 @@ public record PostListItemResponse(
         Long viewCount,
         String attachments, // JSON array of attachment URLs
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        String updatedByName, // 최종 수정자 이름
+        Long commentCount // 댓글 수
 ) {}

@@ -14,5 +14,6 @@ logging:
 
 app:
   storage:
-    md-root: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\md
-    upload-dir: C:\Users\Kingdomcome\Documents\CS_DOC_DATA\uploads
+    base-dir: ${CS_DOC_BASE_DIR:C:\\Users\\Kingdomcome\\Documents}
+    md-root: ${app.storage.base-dir}/CS_DOC_DATA/md
+    upload-dir: ${app.storage.base-dir}/CS_DOC_DATA/uploads

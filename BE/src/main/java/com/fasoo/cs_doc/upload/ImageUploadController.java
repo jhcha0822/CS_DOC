@@ -9,7 +9,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.UUID;
 
 @CrossOrigin(origins = "http://localhost:5173")
@@ -26,7 +28,7 @@ public class ImageUploadController {
 
     @Operation(summary = "Upload image", description = "Upload an image file; returns URL for use in markdown.")
     @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ImageUploadResponse uploadImage(@RequestParam("file") MultipartFile file) throws IOException {
+    public ImageUploadResponse uploadImage(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("File is required");
         }
@@ -45,12 +47,31 @@ public class ImageUploadController {
 
         String uploadDir = storageProperties.uploadDir();
         if (uploadDir == null || uploadDir.isBlank()) {
-            uploadDir = Path.of(storageProperties.mdRoot()).getParent().resolve("uploads").toString();
+            String mdRoot = storageProperties.mdRoot();
+            if (mdRoot == null || mdRoot.isBlank()) {
+                throw new IllegalStateException("Storage path is not configured. Set app.storage.upload-dir or app.storage.md-root.");
+            }
+            uploadDir = Paths.get(mdRoot).getParent().resolve("uploads").toString();
         }
-        Path dir = Path.of(uploadDir).toAbsolutePath().normalize();
-        Files.createDirectories(dir);
+        // Windows 경로 호환: 슬래시 통일 후 Paths.get 사용
+        String normalizedDir = uploadDir.replace('\\', '/').trim();
+        Path dir;
+        try {
+            dir = Paths.get(normalizedDir).toAbsolutePath().normalize();
+        } catch (InvalidPathException e) {
+            throw new IllegalStateException("Image save path is invalid. Check app.storage.upload-dir configuration.");
+        }
+        try {
+            Files.createDirectories(dir);
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot create image upload directory. Check path and permissions.");
+        }
         Path target = dir.resolve(filename);
-        Files.copy(file.getInputStream(), target);
+        try {
+            Files.copy(file.getInputStream(), target);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to save image file.");
+        }
 
         String url = "/uploads/" + filename;
         return new ImageUploadResponse(url);

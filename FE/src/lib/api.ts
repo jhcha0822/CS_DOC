@@ -16,6 +16,8 @@ export type PostListItem = {
     attachments: string | null; // JSON array of attachment URLs
     createdAt: string;
     updatedAt: string;
+    updatedByName: string | null; // 최종 수정자 이름
+    commentCount: number | null; // 댓글 수
 };
 
 export type PostListResponse = {
@@ -39,6 +41,7 @@ export type PostDetail = {
     createdAt: string;
     updatedAt: string;
     contentMd?: string;
+    updatedByName: string | null; // 최종 수정자 이름
 };
 
 export type PostContentResponse = {
@@ -57,14 +60,44 @@ export class ApiError extends Error {
 }
 
 /**
+ * 인증 헤더를 추가한 RequestInit 반환
+ */
+function addAuthHeader(init?: RequestInit): RequestInit {
+    const headers = new Headers(init?.headers);
+    if (typeof window !== "undefined") {
+        const userStr = localStorage.getItem("cs_doc_user");
+        if (userStr) {
+            try {
+                const user = JSON.parse(userStr);
+                if (user?.id) {
+                    headers.set("X-User-Id", String(user.id));
+                }
+            } catch {
+                // 무시
+            }
+        }
+    }
+    return {
+        ...init,
+        headers: headers,
+    };
+}
+
+/**
  * JSON이 아닌 HTML(예: 에러 페이지)로 오는 경우를 잡아내기 위한 공통 fetch
  */
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(url, init);
+    const res = await fetch(url, addAuthHeader(init));
     const contentType = res.headers.get("content-type") || "";
     const isJson = contentType.includes("application/json");
 
     if (!res.ok) {
+        // 401 Unauthorized인 경우 로그인 페이지로 리다이렉트
+        if (res.status === 401) {
+            if (typeof window !== "undefined") {
+                window.location.href = "/login";
+            }
+        }
         const body = await res.text().catch(() => "");
         throw new ApiError(
             `HTTP ${res.status} ${res.statusText}${body ? ` - ${body.slice(0, 200)}` : ""}`,
@@ -140,9 +173,9 @@ export async function fetchPost(id: number): Promise<PostDetail> {
  */
 export async function incrementViewCount(id: number): Promise<void> {
     const url = new URL(`/api/posts/${id}/view`, API_BASE);
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "POST",
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -160,10 +193,10 @@ export async function uploadImage(file: File): Promise<{ url: string }> {
     const url = new URL("/api/upload/image", API_BASE);
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "POST",
         body: form,
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -189,6 +222,7 @@ export type PostCreatePayload = {
     contentMd: string;
     isNotice?: boolean;
     attachments?: File[];
+    userId?: number;
 };
 
 export type PostPatchPayload = {
@@ -197,6 +231,7 @@ export type PostPatchPayload = {
     markdown?: string;
     isNotice?: boolean;
     attachments?: File[];
+    userId?: number;
 };
 
 export type PostResponse = {
@@ -219,11 +254,14 @@ export async function createPost(payload: PostCreatePayload): Promise<PostRespon
     if (payload.isNotice !== undefined) {
         body.isNotice = payload.isNotice;
     }
-    const res = await fetch(url.toString(), {
+    if (payload.userId !== undefined) {
+        body.userId = payload.userId;
+    }
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -250,10 +288,10 @@ export async function addAttachmentsToPost(id: number, attachments: File[]): Pro
     const form = new FormData();
     attachments.forEach((att) => form.append("attachments", att));
 
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "POST",
         body: form,
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -269,9 +307,9 @@ export async function addAttachmentsToPost(id: number, attachments: File[]): Pro
  */
 export async function deletePost(id: number): Promise<void> {
     const url = new URL(`/api/posts/${id}`, API_BASE);
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "DELETE",
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -288,7 +326,8 @@ export type PostVersion = {
     versionNumber: number;
     title: string | null;
     contentMd: string;
-    createdBy: string | null;
+    createdBy: number | null; // 사용자 ID
+    createdByName: string | null; // 사용자 이름
     createdAt: string;
 };
 
@@ -297,7 +336,7 @@ export type PostVersion = {
  */
 export async function getPostVersions(postId: number): Promise<PostVersion[]> {
     const url = new URL(`/api/posts/${postId}/versions`, API_BASE);
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), addAuthHeader());
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -314,7 +353,7 @@ export async function getPostVersions(postId: number): Promise<PostVersion[]> {
  */
 export async function getPostVersion(postId: number, versionNumber: number): Promise<PostVersion> {
     const url = new URL(`/api/posts/${postId}/versions/${versionNumber}`, API_BASE);
-    const res = await fetch(url.toString());
+    const res = await fetch(url.toString(), addAuthHeader());
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -336,16 +375,7 @@ export async function listDeletedPosts(keyword?: string, postId?: number, page?:
     if (page !== undefined) url.searchParams.set("page", page.toString());
     if (size !== undefined) url.searchParams.set("size", size.toString());
     
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new ApiError(
-            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
-            res.status,
-            text
-        );
-    }
-    return res.json();
+    return fetchJson<PostListResponse>(url.toString());
 }
 
 /**
@@ -353,16 +383,7 @@ export async function listDeletedPosts(keyword?: string, postId?: number, page?:
  */
 export async function getDeletionHistory(): Promise<PostListItem[]> {
     const url = new URL("/api/posts/deleted/history", API_BASE);
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new ApiError(
-            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
-            res.status,
-            text
-        );
-    }
-    return res.json();
+    return fetchJson<PostListItem[]>(url.toString());
 }
 
 export type ChangeHistoryItem = {
@@ -404,16 +425,7 @@ export async function getAllChangeHistory(
     if (keyword) url.searchParams.set("keyword", keyword);
     if (postId !== undefined) url.searchParams.set("postId", postId.toString());
     
-    const res = await fetch(url.toString());
-    if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new ApiError(
-            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
-            res.status,
-            text
-        );
-    }
-    return res.json();
+    return fetchJson<ChangeHistoryListResponse>(url.toString());
 }
 
 /**
@@ -438,11 +450,12 @@ export async function patchPost(
     if (payload.categoryId !== undefined) body.categoryId = payload.categoryId;
     if (payload.markdown !== undefined) body.markdown = payload.markdown;
     if (payload.isNotice !== undefined) body.isNotice = payload.isNotice;
-    const res = await fetch(url.toString(), {
+    if (payload.userId !== undefined) body.userId = payload.userId;
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -466,7 +479,7 @@ export async function patchPost(
  */
 export async function createPostByUpload(
     file: File,
-    options?: { title?: string; categoryId: number; isNotice?: boolean; images?: File[]; attachments?: File[] }
+    options?: { title?: string; categoryId: number; isNotice?: boolean; images?: File[]; attachments?: File[]; userId?: number }
 ): Promise<PostResponse> {
     const url = new URL("/api/posts/upload", API_BASE);
     const form = new FormData();
@@ -475,6 +488,9 @@ export async function createPostByUpload(
     if (options?.categoryId != null && options.categoryId > 0) form.append("categoryId", String(options.categoryId));
     if (options?.isNotice !== undefined) {
         form.append("isNotice", String(options.isNotice));
+    }
+    if (options?.userId != null) {
+        form.append("userId", String(options.userId));
     }
     
     if (options?.images) {
@@ -485,10 +501,10 @@ export async function createPostByUpload(
         options.attachments.forEach((att) => form.append("attachments", att));
     }
 
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "POST",
         body: form,
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -506,12 +522,15 @@ export async function createPostByUpload(
 export async function updateContentByUpload(
     id: number,
     file: File,
-    options?: { title?: string; images?: File[]; attachments?: File[] }
+    options?: { title?: string; images?: File[]; attachments?: File[]; userId?: number }
 ): Promise<PostResponse> {
     const url = new URL(`/api/posts/${id}/content/upload`, API_BASE);
     const form = new FormData();
     form.append("file", file);
     if (options?.title?.trim()) form.append("title", options.title.trim());
+    if (options?.userId != null) {
+        form.append("userId", String(options.userId));
+    }
     if (options?.images) {
         options.images.forEach((img) => form.append("images", img));
     }
@@ -519,10 +538,10 @@ export async function updateContentByUpload(
         options.attachments.forEach((att) => form.append("attachments", att));
     }
 
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "PUT",
         body: form,
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -532,6 +551,115 @@ export async function updateContentByUpload(
         );
     }
     return res.json() as Promise<PostResponse>;
+}
+
+// --- Memo (가벼운 팁/메모, post와 별도) ---
+
+export type MemoListItem = {
+    id: number;
+    title: string;
+    bodyPreview: string;
+    createdAt: string;
+    updatedAt: string;
+    updatedByName: string | null; // 최종 수정자 이름
+};
+
+export type MemoDetail = {
+    id: number;
+    title: string;
+    body: string;
+    images: string | null; // JSON array [{"url":"...","name":"..."}]
+    createdAt: string;
+    updatedAt: string;
+    updatedByName: string | null; // 최종 수정자 이름
+};
+
+export type MemoListResponse = {
+    items: MemoListItem[];
+    page?: number;
+    size?: number;
+    totalElements?: number;
+    totalPages?: number;
+    hasNext?: boolean;
+    hasPrevious?: boolean;
+};
+
+export async function fetchMemos(params?: { keyword?: string; page?: number; size?: number }): Promise<MemoListResponse> {
+    const url = new URL("/api/memos", API_BASE);
+    if (params?.keyword?.trim()) url.searchParams.set("keyword", params.keyword.trim());
+    if (params?.page != null) url.searchParams.set("page", String(params.page));
+    if (params?.size != null) url.searchParams.set("size", String(params.size));
+    return fetchJson<MemoListResponse>(url.toString());
+}
+
+export async function fetchMemo(id: number): Promise<MemoDetail> {
+    const url = new URL(`/api/memos/${id}`, API_BASE);
+    return fetchJson<MemoDetail>(url.toString());
+}
+
+export async function createMemo(payload: { title: string; body?: string; images?: string; userId?: number }): Promise<MemoDetail> {
+    const url = new URL("/api/memos", API_BASE);
+    const body: Record<string, unknown> = {
+        title: payload.title.trim(),
+        body: payload.body ?? "",
+        images: payload.images ?? "[]",
+    };
+    if (payload.userId !== undefined) {
+        body.userId = payload.userId;
+    }
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    }));
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return res.json() as Promise<MemoDetail>;
+}
+
+export async function updateMemo(
+    id: number,
+    payload: { title?: string; body?: string; images?: string; userId?: number }
+): Promise<MemoDetail> {
+    const url = new URL(`/api/memos/${id}`, API_BASE);
+    const body: Record<string, unknown> = {};
+    if (payload.title !== undefined) body.title = payload.title.trim();
+    if (payload.body !== undefined) body.body = payload.body;
+    if (payload.images !== undefined) body.images = payload.images;
+    if (payload.userId !== undefined) body.userId = payload.userId;
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    }));
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return res.json() as Promise<MemoDetail>;
+}
+
+export async function deleteMemo(id: number): Promise<void> {
+    const url = new URL(`/api/memos/${id}`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({ method: "DELETE" }));
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
 }
 
 // --- Category (관리용, 추후 RBAC 적용) ---
@@ -554,6 +682,74 @@ export type CategoryBulkUpdateItem = {
     sortOrder: number;
 };
 
+export type UserItem = {
+    id: number;
+    username: string;
+    name: string;
+    role: "ADMIN" | "USER";
+};
+
+export type UserCreatePayload = {
+    username: string;
+    password: string;
+    name: string;
+    role: "ADMIN" | "USER";
+};
+
+export type UserUpdatePayload = {
+    password?: string;
+    name?: string;
+    role: "ADMIN" | "USER";
+};
+
+export async function fetchUsers(): Promise<UserItem[]> {
+    const url = new URL("/api/users", API_BASE);
+    // 로그인 페이지에서 사용하므로 인증 헤더 없이 호출
+    const res = await fetch(url.toString());
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return res.json() as Promise<UserItem[]>;
+}
+
+export async function fetchUser(id: number): Promise<UserItem> {
+    const url = new URL(`/api/users/${id}`, API_BASE);
+    const data = await fetchJson<UserItem>(url.toString());
+    return data;
+}
+
+export async function createUser(payload: UserCreatePayload): Promise<UserItem> {
+    const url = new URL("/api/users", API_BASE);
+    const data = await fetchJson<UserItem>(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+    return data;
+}
+
+export async function updateUser(id: number, payload: UserUpdatePayload): Promise<UserItem> {
+    const url = new URL(`/api/users/${id}`, API_BASE);
+    const data = await fetchJson<UserItem>(url.toString(), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    });
+    return data;
+}
+
+export async function deleteUser(id: number): Promise<void> {
+    const url = new URL(`/api/users/${id}`, API_BASE);
+    await fetchJson<void>(url.toString(), {
+        method: "DELETE",
+    });
+}
+
 export async function fetchCategories(): Promise<CategoryItem[]> {
     const url = new URL("/api/categories", API_BASE);
     try {
@@ -566,14 +762,14 @@ export async function fetchCategories(): Promise<CategoryItem[]> {
 
 export async function createCategory(payload: { label: string; parentId?: number | null }): Promise<CategoryItem> {
     const url = new URL("/api/categories", API_BASE);
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             label: payload.label.trim(),
             parentId: payload.parentId ?? null,
         }),
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -593,11 +789,11 @@ export async function updateCategory(
     const body: Record<string, unknown> = {};
     if (payload.label !== undefined) body.label = payload.label.trim();
     if (payload.parentId !== undefined) body.parentId = payload.parentId;
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -611,11 +807,11 @@ export async function updateCategory(
 
 export async function bulkUpdateCategories(items: CategoryBulkUpdateItem[]): Promise<void> {
     const url = new URL("/api/categories/bulk", API_BASE);
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items }),
-    });
+    }));
     if (!res.ok) {
         let errorText = "";
         try {
@@ -634,11 +830,11 @@ export async function bulkUpdateCategories(items: CategoryBulkUpdateItem[]): Pro
 
 export async function reorderCategories(orderedIds: number[]): Promise<void> {
     const url = new URL("/api/categories/reorder", API_BASE);
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderedIds }),
-    });
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -647,4 +843,61 @@ export async function reorderCategories(orderedIds: number[]): Promise<void> {
             text
         );
     }
+}
+
+// --- Comment (댓글) ---
+
+export type Comment = {
+    id: number;
+    postId: number;
+    content: string;
+    createdBy: number | null;
+    createdByName: string | null;
+    updatedBy: number | null;
+    updatedByName: string | null;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export async function getComments(postId: number): Promise<Comment[]> {
+    const url = new URL(`/api/comments/post/${postId}`, API_BASE);
+    return fetchJson<Comment[]>(url.toString());
+}
+
+export async function createComment(postId: number, content: string, userId?: number): Promise<Comment> {
+    const url = new URL("/api/comments", API_BASE);
+    const body: Record<string, unknown> = {
+        postId,
+        content: content.trim(),
+    };
+    if (userId !== undefined) {
+        body.userId = userId;
+    }
+    return fetchJson<Comment>(url.toString(), addAuthHeader({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    }));
+}
+
+export async function updateComment(id: number, content: string, userId?: number): Promise<Comment> {
+    const url = new URL(`/api/comments/${id}`, API_BASE);
+    const body: Record<string, unknown> = {
+        content: content.trim(),
+    };
+    if (userId !== undefined) {
+        body.userId = userId;
+    }
+    return fetchJson<Comment>(url.toString(), addAuthHeader({
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    }));
+}
+
+export async function deleteComment(id: number): Promise<void> {
+    const url = new URL(`/api/comments/${id}`, API_BASE);
+    await fetchJson<void>(url.toString(), addAuthHeader({
+        method: "DELETE",
+    }));
 }

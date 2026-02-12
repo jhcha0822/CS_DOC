@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, useSearchParams } from "react-router-dom";
 import { fetchCategories, type CategoryItem } from "../lib/api";
+import { isAdmin } from "../lib/auth";
 
 export default function SideNav() {
     const [sp] = useSearchParams();
@@ -137,6 +138,27 @@ export default function SideNav() {
             )}
 
             <div style={{ height: 16 }} />
+            <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>
+                메모
+            </div>
+            <NavLink
+                to="/memos"
+                style={({ isActive }) => ({
+                    display: "block",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    marginBottom: 6,
+                    border: "1px solid #444",
+                    textDecoration: "none",
+                    color: "#111",
+                    background: isActive ? "#f0f0f0" : "#fff",
+                    fontWeight: isActive ? 800 : 600,
+                })}
+            >
+                메모
+            </NavLink>
+
+            <div style={{ height: 16 }} />
 
             <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>
                 바로가기
@@ -176,41 +198,61 @@ export default function SideNav() {
                 H2 Console
             </a>
 
-            <div style={{ height: 16 }} />
-            <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>
-                관리
-            </div>
-            <NavLink
-                to="/categories/manage"
-                style={({ isActive }) => ({
-                    display: "block",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    textDecoration: "none",
-                    color: "#111",
-                    border: "1px solid #444",
-                    background: isActive ? "#f0f0f0" : "#fff",
-                    fontWeight: isActive ? 800 : 600,
-                    marginBottom: 6,
-                })}
-            >
-                카테고리 관리
-            </NavLink>
-            <NavLink
-                to="/posts/versions"
-                style={({ isActive }) => ({
-                    display: "block",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    textDecoration: "none",
-                    color: "#111",
-                    border: "1px solid #444",
-                    background: isActive ? "#f0f0f0" : "#fff",
-                    fontWeight: isActive ? 800 : 600,
-                })}
-            >
-                버전 이력
-            </NavLink>
+            {isAdmin() && (
+                <>
+                    <div style={{ height: 16 }} />
+                    <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>
+                        관리
+                    </div>
+                    <NavLink
+                        to="/categories/manage"
+                        style={({ isActive }) => ({
+                            display: "block",
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            textDecoration: "none",
+                            color: "#111",
+                            border: "1px solid #444",
+                            background: isActive ? "#f0f0f0" : "#fff",
+                            fontWeight: isActive ? 800 : 600,
+                            marginBottom: 6,
+                        })}
+                    >
+                        카테고리 관리
+                    </NavLink>
+                    <NavLink
+                        to="/posts/versions"
+                        style={({ isActive }) => ({
+                            display: "block",
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            textDecoration: "none",
+                            color: "#111",
+                            border: "1px solid #444",
+                            background: isActive ? "#f0f0f0" : "#fff",
+                            fontWeight: isActive ? 800 : 600,
+                            marginBottom: 6,
+                        })}
+                    >
+                        버전 이력
+                    </NavLink>
+                    <NavLink
+                        to="/users/manage"
+                        style={({ isActive }) => ({
+                            display: "block",
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            textDecoration: "none",
+                            color: "#111",
+                            border: "1px solid #444",
+                            background: isActive ? "#f0f0f0" : "#fff",
+                            fontWeight: isActive ? 800 : 600,
+                        })}
+                    >
+                        사용자 관리
+                    </NavLink>
+                </>
+            )}
         </div>
     );
 }

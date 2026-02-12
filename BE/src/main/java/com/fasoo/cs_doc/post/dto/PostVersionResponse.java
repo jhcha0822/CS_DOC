@@ -8,6 +8,7 @@ public record PostVersionResponse(
         Integer versionNumber,
         String title,
         String contentMd,
-        String createdBy,
+        Long createdBy, // 사용자 ID
+        String createdByName, // 사용자 이름
         LocalDateTime createdAt
 ) {}

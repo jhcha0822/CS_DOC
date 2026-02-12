@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, createSearchParams, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { fetchPost, fetchCategories, incrementViewCount, deletePost, type PostDetail, type CategoryItem } from "../lib/api";
+import { fetchPost, fetchCategories, incrementViewCount, deletePost, getComments, createComment, updateComment, deleteComment, type PostDetail, type CategoryItem, type Comment } from "../lib/api";
 import { ApiError } from "../lib/api";
 import { labelOfApiCategory } from "../lib/categories";
+import { getCurrentUser } from "../lib/auth";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import "@uiw/react-markdown-preview/markdown.css";
 
@@ -37,12 +38,100 @@ export default function PostDetailPage() {
     const [categories, setCategories] = useState<CategoryItem[]>([]);
     const [deleting, setDeleting] = useState(false);
     const viewCountIncrementedRef = useRef<number | null>(null);
+    
+    // 댓글 관련 상태
+    const [comments, setComments] = useState<Comment[]>([]);
+    const [commentLoading, setCommentLoading] = useState(false);
+    const [newComment, setNewComment] = useState("");
+    const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+    const [editingCommentContent, setEditingCommentContent] = useState("");
+    const [submittingComment, setSubmittingComment] = useState(false);
 
     useEffect(() => {
         fetchCategories()
             .then((list) => setCategories(list ?? []))
             .catch(() => setCategories([]));
     }, []);
+
+    // 댓글 로드
+    const loadComments = useCallback(async () => {
+        if (!Number.isFinite(postId)) return;
+        setCommentLoading(true);
+        try {
+            const commentList = await getComments(postId);
+            setComments(commentList);
+        } catch (e) {
+            console.error("Failed to load comments:", e);
+        } finally {
+            setCommentLoading(false);
+        }
+    }, [postId]);
+
+    useEffect(() => {
+        loadComments();
+    }, [loadComments]);
+
+    // 댓글 작성
+    const handleCreateComment = useCallback(async () => {
+        if (!newComment.trim()) return;
+        const currentUser = getCurrentUser();
+        setSubmittingComment(true);
+        try {
+            await createComment(postId, newComment, currentUser?.id);
+            setNewComment("");
+            await loadComments();
+        } catch (e) {
+            const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "댓글 작성에 실패했습니다.";
+            alert(msg);
+        } finally {
+            setSubmittingComment(false);
+        }
+    }, [postId, newComment, loadComments]);
+
+    // 댓글 수정 시작
+    const handleStartEditComment = useCallback((comment: Comment) => {
+        setEditingCommentId(comment.id);
+        setEditingCommentContent(comment.content);
+    }, []);
+
+    // 댓글 수정 취소
+    const handleCancelEditComment = useCallback(() => {
+        setEditingCommentId(null);
+        setEditingCommentContent("");
+    }, []);
+
+    // 댓글 수정 저장
+    const handleUpdateComment = useCallback(async (id: number) => {
+        if (!editingCommentContent.trim()) return;
+        const currentUser = getCurrentUser();
+        setSubmittingComment(true);
+        try {
+            await updateComment(id, editingCommentContent, currentUser?.id);
+            setEditingCommentId(null);
+            setEditingCommentContent("");
+            await loadComments();
+        } catch (e) {
+            const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "댓글 수정에 실패했습니다.";
+            alert(msg);
+        } finally {
+            setSubmittingComment(false);
+        }
+    }, [editingCommentContent, loadComments]);
+
+    // 댓글 삭제
+    const handleDeleteComment = useCallback(async (id: number) => {
+        if (!window.confirm("정말 이 댓글을 삭제하시겠습니까?")) return;
+        setSubmittingComment(true);
+        try {
+            await deleteComment(id);
+            await loadComments();
+        } catch (e) {
+            const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "댓글 삭제에 실패했습니다.";
+            alert(msg);
+        } finally {
+            setSubmittingComment(false);
+        }
+    }, [loadComments]);
 
     const listSearchParams = useCallback(() => {
         const p: Record<string, string> = {};
@@ -268,7 +357,9 @@ export default function PostDetailPage() {
                             </div>
                             <div style={{ textAlign: "right", fontSize: 12, opacity: 0.8 }}>
                                 생성 {formatKST(post.createdAt)}<br />
-                                수정 {formatKST(post.updatedAt)}<br />
+                                수정 {formatKST(post.updatedAt)}
+                                {post.updatedByName && <span style={{ marginLeft: 6 }}>· {post.updatedByName}</span>}
+                                <br />
                                 <div style={{ marginTop: 4 }}>
                                     조회 {post.viewCount ?? 0}
                                 </div>
@@ -375,6 +466,194 @@ export default function PostDetailPage() {
                         </div>
                     </div>
                 )}
+
+                {/* 댓글 섹션 */}
+                <div style={{ marginTop: 40, paddingTop: 24, borderTop: "2px solid #e5e7eb" }}>
+                    <h3 style={{ marginTop: 0, marginBottom: 20, fontSize: 20, fontWeight: 700 }}>댓글 ({comments.length})</h3>
+                    
+                    {/* 댓글 작성 폼 */}
+                    <div style={{ marginBottom: 24 }}>
+                        <textarea
+                            value={newComment}
+                            onChange={(e) => setNewComment(e.target.value)}
+                            placeholder="댓글을 입력하세요..."
+                            rows={4}
+                            style={{
+                                width: "100%",
+                                padding: "12px",
+                                borderRadius: 8,
+                                border: "1px solid #444",
+                                fontSize: 14,
+                                fontFamily: "inherit",
+                                resize: "vertical",
+                            }}
+                        />
+                        <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                            <button
+                                type="button"
+                                onClick={handleCreateComment}
+                                disabled={submittingComment || !newComment.trim()}
+                                style={{
+                                    padding: "8px 16px",
+                                    borderRadius: 8,
+                                    border: "1px solid #444",
+                                    background: submittingComment || !newComment.trim() ? "#999" : "#2563eb",
+                                    color: "#fff",
+                                    fontWeight: 600,
+                                    cursor: submittingComment || !newComment.trim() ? "not-allowed" : "pointer",
+                                    fontSize: 14,
+                                }}
+                            >
+                                등록
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* 댓글 목록 */}
+                    {commentLoading ? (
+                        <div style={{ padding: 20, textAlign: "center", opacity: 0.7 }}>댓글을 불러오는 중...</div>
+                    ) : comments.length === 0 ? (
+                        <div style={{ padding: 20, textAlign: "center", opacity: 0.7 }}>댓글이 없습니다.</div>
+                    ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                            {comments.map((comment) => (
+                                <div
+                                    key={comment.id}
+                                    style={{
+                                        padding: 16,
+                                        borderRadius: 8,
+                                        border: "1px solid #e5e7eb",
+                                        background: "#f9fafb",
+                                    }}
+                                >
+                                    {editingCommentId === comment.id ? (
+                                        <div>
+                                            <textarea
+                                                value={editingCommentContent}
+                                                onChange={(e) => setEditingCommentContent(e.target.value)}
+                                                rows={3}
+                                                style={{
+                                                    width: "100%",
+                                                    padding: "8px",
+                                                    borderRadius: 6,
+                                                    border: "1px solid #444",
+                                                    fontSize: 14,
+                                                    fontFamily: "inherit",
+                                                    resize: "vertical",
+                                                }}
+                                            />
+                                            <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleCancelEditComment}
+                                                    disabled={submittingComment}
+                                                    style={{
+                                                        padding: "6px 12px",
+                                                        borderRadius: 6,
+                                                        border: "1px solid #444",
+                                                        background: "#fff",
+                                                        color: "#111",
+                                                        fontWeight: 600,
+                                                        cursor: submittingComment ? "not-allowed" : "pointer",
+                                                        fontSize: 13,
+                                                    }}
+                                                >
+                                                    취소
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUpdateComment(comment.id)}
+                                                    disabled={submittingComment || !editingCommentContent.trim()}
+                                                    style={{
+                                                        padding: "6px 12px",
+                                                        borderRadius: 6,
+                                                        border: "1px solid #444",
+                                                        background: submittingComment || !editingCommentContent.trim() ? "#999" : "#2563eb",
+                                                        color: "#fff",
+                                                        fontWeight: 600,
+                                                        cursor: submittingComment || !editingCommentContent.trim() ? "not-allowed" : "pointer",
+                                                        fontSize: 13,
+                                                    }}
+                                                >
+                                                    저장
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <div style={{ marginBottom: 8 }}>
+                                                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+                                                    {comment.createdByName || comment.updatedByName || "익명"}
+                                                </div>
+                                                <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                                    {formatKST(comment.createdAt)}
+                                                    {comment.updatedAt !== comment.createdAt && (
+                                                        <span style={{ marginLeft: 8 }}>(수정됨)</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                                {comment.content}
+                                            </div>
+                                            {(() => {
+                                                const currentUser = getCurrentUser();
+                                                const isCommentAuthor = currentUser && comment.createdBy && currentUser.id === comment.createdBy;
+                                                const isAdmin = currentUser?.role === "ADMIN";
+                                                const canEdit = isCommentAuthor;
+                                                const canDelete = isCommentAuthor || isAdmin;
+                                                
+                                                if (!canEdit && !canDelete) return null;
+                                                
+                                                return (
+                                                    <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                                                        {canEdit && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleStartEditComment(comment)}
+                                                                disabled={submittingComment}
+                                                                style={{
+                                                                    padding: "4px 8px",
+                                                                    borderRadius: 4,
+                                                                    border: "1px solid #444",
+                                                                    background: "#fff",
+                                                                    color: "#111",
+                                                                    fontWeight: 500,
+                                                                    cursor: submittingComment ? "not-allowed" : "pointer",
+                                                                    fontSize: 12,
+                                                                }}
+                                                            >
+                                                                수정
+                                                            </button>
+                                                        )}
+                                                        {canDelete && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDeleteComment(comment.id)}
+                                                                disabled={submittingComment}
+                                                                style={{
+                                                                    padding: "4px 8px",
+                                                                    borderRadius: 4,
+                                                                    border: "1px solid #dc2626",
+                                                                    background: "#dc2626",
+                                                                    color: "#fff",
+                                                                    fontWeight: 500,
+                                                                    cursor: submittingComment ? "not-allowed" : "pointer",
+                                                                    fontSize: 12,
+                                                                }}
+                                                            >
+                                                                삭제
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

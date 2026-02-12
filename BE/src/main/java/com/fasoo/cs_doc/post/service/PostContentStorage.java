@@ -71,19 +71,31 @@ public class PostContentStorage {
         Path absolute = resolveSafe(rel);
 
         try {
-            Files.createDirectories(absolute.getParent());
+            // 부모 디렉토리 생성 (없으면)
+            Path parent = absolute.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
 
+            // 임시 파일로 먼저 쓰기 (원자적 쓰기)
             Path tmp = absolute.resolveSibling(absolute.getFileName() + ".tmp");
             Files.writeString(tmp, markdown, StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 
+            // 임시 파일을 최종 파일로 이동 (원자적 이동)
             try {
                 Files.move(tmp, absolute, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (AtomicMoveNotSupportedException ex) {
+                // 원자적 이동이 지원되지 않으면 일반 이동
                 Files.move(tmp, absolute, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to write md: " + rel, e);
+            // 더 자세한 에러 메시지 제공
+            String errorDetail = String.format("Path: %s, Parent exists: %s, Parent writable: %s",
+                    absolute,
+                    absolute.getParent() != null && Files.exists(absolute.getParent()),
+                    absolute.getParent() != null && Files.exists(absolute.getParent()) && Files.isWritable(absolute.getParent()));
+            throw new IllegalStateException("Failed to write md: " + rel + " - " + e.getMessage() + " (" + errorDetail + ")", e);
         }
     }
 

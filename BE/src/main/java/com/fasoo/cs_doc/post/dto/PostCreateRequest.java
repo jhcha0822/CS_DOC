@@ -8,5 +8,6 @@ public record PostCreateRequest(
         @NotBlank @Size(max = 200) String title,
         @NotNull Long categoryId,
         @NotBlank String contentMd,
-        Boolean isNotice
+        Boolean isNotice,
+        Long userId // 작성자 사용자 ID (선택적)
 ) {}

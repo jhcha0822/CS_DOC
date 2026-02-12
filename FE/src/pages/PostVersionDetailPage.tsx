@@ -72,6 +72,7 @@ export default function PostVersionDetailPage() {
                     </div>
                     <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>
                         수정일: {formatKST(version.createdAt)}
+                        {version.createdByName && <span style={{ marginLeft: 6 }}>· {version.createdByName}</span>}
                     </div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
