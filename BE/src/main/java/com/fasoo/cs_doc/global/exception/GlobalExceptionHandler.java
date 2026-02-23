@@ -2,8 +2,11 @@ package com.fasoo.cs_doc.global.exception;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
@@ -14,6 +17,15 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public ErrorResponse handleNotFound(NotFoundException e) {
         return new ErrorResponse("NOT_FOUND", e.getMessage());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleValidation(MethodArgumentNotValidException e) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .map(err -> err.getField() + ": " + (err.getDefaultMessage() != null ? err.getDefaultMessage() : "invalid"))
+                .collect(Collectors.joining("; "));
+        return new ErrorResponse("VALIDATION_ERROR", message);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -32,11 +44,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ErrorResponse handleUnexpected(Exception e) {
         log.error("UNEXPECTED_ERROR", e); // ✅ 스택트레이스 로그
-        String message = e.getMessage();
-        if (message == null || message.isEmpty()) {
-            message = e.getClass().getSimpleName();
-        }
-        return new ErrorResponse("UNEXPECTED_ERROR", message);
+        return new ErrorResponse("UNEXPECTED_ERROR", "Unexpected server error");
     }
 
     @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)

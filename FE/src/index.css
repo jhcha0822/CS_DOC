@@ -175,26 +175,20 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
-/* 테두리: 버튼·select·input·링크·카드 등 항상 보이게 (고정 색상 + !important) */
-.app-layout button,
+/* 테두리: select·input·링크·카드 등 항상 보이게 (버튼 제외) - 사내 시스템 스타일 */
 .app-layout select,
 .app-layout input,
 .app-layout aside a,
 .app-layout aside nav a,
-.app-layout .header-actions a,
-.app-layout .header-actions button,
 .app-layout .content-card,
 .app-layout .file-action-label {
-  border: 1px solid #444 !important;
+  border: 1px solid #e5e7eb !important;
 }
 /* dark 시 테두리 색 */
-html[data-theme="dark"] .app-layout button,
 html[data-theme="dark"] .app-layout select,
 html[data-theme="dark"] .app-layout input,
 html[data-theme="dark"] .app-layout aside a,
 html[data-theme="dark"] .app-layout aside nav a,
-html[data-theme="dark"] .app-layout .header-actions a,
-html[data-theme="dark"] .app-layout .header-actions button,
 html[data-theme="dark"] .app-layout .content-card,
 html[data-theme="dark"] .app-layout .file-action-label {
   border-color: #666 !important;
@@ -220,4 +214,55 @@ html[data-theme="dark"] .app-layout .file-action-label {
   --color-canvas-default: var(--app-bg);
   --color-fg-default: var(--app-text);
   --color-border-default: var(--app-border);
+}
+
+/* 사내 시스템 스타일 버튼 클래스 - 테두리 없음 */
+.btn-primary {
+  background-color: #3B82F6 !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 8px 16px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: background-color 0.2s !important;
+}
+
+.btn-primary:hover {
+  background-color: #2563eb !important;
+}
+
+.btn-primary:disabled {
+  background-color: #9ca3af !important;
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+}
+
+.btn-secondary {
+  background-color: #f3f4f6 !important;
+  color: #374151 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 8px 16px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: background-color 0.2s !important;
+}
+
+.btn-secondary:hover {
+  background-color: #e5e7eb !important;
+}
+
+.btn-secondary:disabled {
+  background-color: #f9fafb !important;
+  color: #9ca3af !important;
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+}
+
+/* 모든 버튼 기본 스타일 - 테두리 없음 */
+.app-layout button {
+  border: none !important;
 }

@@ -12,6 +12,7 @@ import java.nio.file.*;
 public class PostContentStorage {
 
     private static final String POSTS_DIR = "posts";
+    private static final String ASSIGNMENTS_DIR = "assignments";
     private final Path mdRoot;
 
     public PostContentStorage(StorageProperties props) {
@@ -63,6 +64,16 @@ public class PostContentStorage {
             return Files.readString(absolute, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read md: " + relativePath, e);
+        }
+    }
+
+    /** 파일이 없으면 빈 문자열 반환 (과제 task 설명/답변 초기 미작성 시) */
+    public String readOptional(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) return "";
+        try {
+            return read(relativePath);
+        } catch (NotFoundException e) {
+            return "";
         }
     }
 
@@ -125,6 +136,30 @@ public class PostContentStorage {
         // 줄바꿈 통일
         md = md.replace("\r\n", "\n").replace("\r", "\n");
         return md;
+    }
+
+    // --- 과제(assignment)용 md 경로: assignments/{postId}/... ---
+
+    /** 세부 과제 설명 md 경로: assignments/{postId}/tasks/{taskId}.md */
+    public String writeAssignmentTaskDescription(Long postId, Long taskId, String markdown) {
+        String relative = ASSIGNMENTS_DIR + "/" + postId + "/tasks/" + taskId + ".md";
+        overwrite(relative, markdown);
+        return relative;
+    }
+
+    /** 사용자 답변 md 경로 (새 구조): assignments/{postId}/submissions/{submitterId}/answer.md */
+    public String writeAssignmentAnswer(Long postId, Long submitterId, String markdown) {
+        String relative = ASSIGNMENTS_DIR + "/" + postId + "/submissions/" + submitterId + "/answer.md";
+        overwrite(relative, markdown);
+        return relative;
+    }
+
+    /** 사용자 답변 md 경로 (구 구조, 호환성 유지): assignments/{postId}/submissions/{submitterId}/tasks/{taskId}.md */
+    @Deprecated
+    public String writeAssignmentAnswer(Long postId, Long submitterId, Long taskId, String markdown) {
+        String relative = ASSIGNMENTS_DIR + "/" + postId + "/submissions/" + submitterId + "/tasks/" + taskId + ".md";
+        overwrite(relative, markdown);
+        return relative;
     }
 
     /** md 파일 삭제 (없으면 그냥 통과) */

@@ -69,16 +69,16 @@ export default function SideNav() {
         <div>
             <NavLink
                 to="/posts"
-                style={() => ({
+                style={({ isActive }) => ({
                     display: "block",
                     padding: "10px 12px",
-                    borderRadius: 10,
-                    marginBottom: 6,
-                    border: "1px solid #444",
+                    borderRadius: 6,
+                    marginBottom: 4,
                     textDecoration: "none",
-                    color: "#111",
-                    background: catParam === null ? "#f0f0f0" : "#fff",
-                    fontWeight: catParam === null ? 800 : 600,
+                    color: isActive || catParam === null ? "#ffffff" : "#374151",
+                    background: isActive || catParam === null ? "#3B82F6" : "transparent",
+                    fontWeight: isActive || catParam === null ? 600 : 500,
+                    fontSize: 14,
                 })}
             >
                 전체
@@ -91,37 +91,35 @@ export default function SideNav() {
                     <div key={parent.id}>
                         <NavLink
                             to={`/posts?cat=${parent.id}`}
-                            style={() => ({
+                            style={({ isActive }) => ({
                                 display: "block",
                                 padding: "10px 12px",
-                                borderRadius: 10,
-                                marginBottom: 6,
-                                border: "1px solid #444",
+                                borderRadius: 6,
+                                marginBottom: 4,
                                 textDecoration: "none",
-                                color: "#111",
-                                background: isParentSelected ? "#f0f0f0" : "#fff",
-                                fontWeight: isParentSelected ? 800 : 600,
+                                color: isActive || isParentSelected ? "#ffffff" : "#374151",
+                                background: isActive || isParentSelected ? "#3B82F6" : "transparent",
+                                fontWeight: isActive || isParentSelected ? 600 : 500,
+                                fontSize: 14,
                             })}
                         >
                             {parent.label}
                         </NavLink>
-                        {children.map((child) => {
+                        {children.length > 0 && children.map((child) => {
                             const isChildSelected = isSelected(child);
                             return (
                                 <NavLink
                                     key={child.id}
                                     to={`/posts?cat=${child.id}`}
-                                    style={() => ({
+                                    style={({ isActive }) => ({
                                         display: "block",
-                                        padding: "10px 12px",
-                                        marginLeft: 20,
-                                        borderRadius: 10,
-                                        marginBottom: 6,
-                                        border: "1px solid #444",
+                                        padding: "8px 12px 8px 32px",
+                                        marginBottom: 2,
                                         textDecoration: "none",
-                                        color: "#111",
-                                        background: isChildSelected ? "#f0f0f0" : "#fff",
-                                        fontWeight: isChildSelected ? 800 : 600,
+                                        color: isActive || isChildSelected ? "#374151" : "#6b7280",
+                                        background: "transparent",
+                                        fontWeight: isActive || isChildSelected ? 500 : 400,
+                                        fontSize: 13,
                                     })}
                                 >
                                     {child.label}
@@ -132,13 +130,13 @@ export default function SideNav() {
                 );
                 })
             ) : (
-                <div style={{ padding: "10px 12px", fontSize: 12, opacity: 0.6 }}>
+                <div style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280" }}>
                     카테고리를 불러올 수 없습니다.
                 </div>
             )}
 
-            <div style={{ height: 16 }} />
-            <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>
+            <div style={{ height: 20 }} />
+            <div style={{ fontSize: 11, color: "#9ca3af", margin: "12px 0 8px", paddingLeft: 12, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 메모
             </div>
             <NavLink
@@ -146,40 +144,23 @@ export default function SideNav() {
                 style={({ isActive }) => ({
                     display: "block",
                     padding: "10px 12px",
-                    borderRadius: 10,
-                    marginBottom: 6,
-                    border: "1px solid #444",
+                    borderRadius: 6,
+                    marginBottom: 4,
                     textDecoration: "none",
-                    color: "#111",
-                    background: isActive ? "#f0f0f0" : "#fff",
-                    fontWeight: isActive ? 800 : 600,
+                    color: isActive ? "#ffffff" : "#374151",
+                    background: isActive ? "#3B82F6" : "transparent",
+                    fontWeight: isActive ? 600 : 500,
+                    fontSize: 14,
                 })}
             >
                 메모
             </NavLink>
 
-            <div style={{ height: 16 }} />
+            <div style={{ height: 20 }} />
 
-            <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>
+            <div style={{ fontSize: 11, color: "#9ca3af", margin: "12px 0 8px", paddingLeft: 12, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 바로가기
             </div>
-
-            <a
-                href={`${import.meta.env.VITE_API_BASE || "http://localhost:8080"}/swagger-ui/index.html`}
-                target="_blank"
-                rel="noreferrer"
-                    style={{
-                    display: "block",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    textDecoration: "none",
-                    color: "#111",
-                    border: "1px solid #444",
-                    marginBottom: 6,
-                }}
-            >
-                Swagger UI
-            </a>
 
             <a
                 href={`${import.meta.env.VITE_API_BASE || "http://localhost:8080"}/h2-console`}
@@ -188,11 +169,13 @@ export default function SideNav() {
                 style={{
                     display: "block",
                     padding: "10px 12px",
-                    borderRadius: 10,
+                    borderRadius: 6,
                     textDecoration: "none",
-                    color: "#111",
-                    border: "1px solid #444",
-                    marginBottom: 6,
+                    color: "#374151",
+                    background: "transparent",
+                    fontWeight: 500,
+                    fontSize: 14,
+                    marginBottom: 4,
                 }}
             >
                 H2 Console
@@ -200,8 +183,8 @@ export default function SideNav() {
 
             {isAdmin() && (
                 <>
-                    <div style={{ height: 16 }} />
-                    <div style={{ fontSize: 12, opacity: 0.75, margin: "12px 0 8px" }}>
+                    <div style={{ height: 20 }} />
+                    <div style={{ fontSize: 11, color: "#9ca3af", margin: "12px 0 8px", paddingLeft: 12, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                         관리
                     </div>
                     <NavLink
@@ -209,13 +192,13 @@ export default function SideNav() {
                         style={({ isActive }) => ({
                             display: "block",
                             padding: "10px 12px",
-                            borderRadius: 10,
+                            borderRadius: 6,
                             textDecoration: "none",
-                            color: "#111",
-                            border: "1px solid #444",
-                            background: isActive ? "#f0f0f0" : "#fff",
-                            fontWeight: isActive ? 800 : 600,
-                            marginBottom: 6,
+                            color: isActive ? "#ffffff" : "#374151",
+                            background: isActive ? "#3B82F6" : "transparent",
+                            fontWeight: isActive ? 600 : 500,
+                            fontSize: 14,
+                            marginBottom: 4,
                         })}
                     >
                         카테고리 관리
@@ -225,13 +208,13 @@ export default function SideNav() {
                         style={({ isActive }) => ({
                             display: "block",
                             padding: "10px 12px",
-                            borderRadius: 10,
+                            borderRadius: 6,
                             textDecoration: "none",
-                            color: "#111",
-                            border: "1px solid #444",
-                            background: isActive ? "#f0f0f0" : "#fff",
-                            fontWeight: isActive ? 800 : 600,
-                            marginBottom: 6,
+                            color: isActive ? "#ffffff" : "#374151",
+                            background: isActive ? "#3B82F6" : "transparent",
+                            fontWeight: isActive ? 600 : 500,
+                            fontSize: 14,
+                            marginBottom: 4,
                         })}
                     >
                         버전 이력
@@ -241,12 +224,12 @@ export default function SideNav() {
                         style={({ isActive }) => ({
                             display: "block",
                             padding: "10px 12px",
-                            borderRadius: 10,
+                            borderRadius: 6,
                             textDecoration: "none",
-                            color: "#111",
-                            border: "1px solid #444",
-                            background: isActive ? "#f0f0f0" : "#fff",
-                            fontWeight: isActive ? 800 : 600,
+                            color: isActive ? "#ffffff" : "#374151",
+                            background: isActive ? "#3B82F6" : "transparent",
+                            fontWeight: isActive ? 600 : 500,
+                            fontSize: 14,
                         })}
                     >
                         사용자 관리

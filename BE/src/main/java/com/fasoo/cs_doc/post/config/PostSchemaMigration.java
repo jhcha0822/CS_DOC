@@ -128,6 +128,21 @@ public class PostSchemaMigration implements ApplicationRunner {
                 log.warn("Post current_version_id column migration failed: {}", e.getMessage());
             }
             
+            // 5-1. summary_title 컬럼 추가
+            try {
+                String checkColumnSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'POST' AND COLUMN_NAME = 'SUMMARY_TITLE'";
+                Long count = ((Number) entityManager.createNativeQuery(checkColumnSql).getSingleResult()).longValue();
+                
+                if (count == 0) {
+                    entityManager.createNativeQuery("ALTER TABLE post ADD COLUMN summary_title VARCHAR(200) NULL").executeUpdate();
+                    log.info("Post summary_title column added successfully");
+                } else {
+                    log.debug("Post summary_title column already exists");
+                }
+            } catch (Exception e) {
+                log.warn("Post summary_title column migration failed: {}", e.getMessage());
+            }
+            
             // 6. post_version 테이블 생성 (content_md_path 사용)
             try {
                 String checkTableSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'POST_VERSION'";

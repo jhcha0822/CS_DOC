@@ -1,6 +1,7 @@
 package com.fasoo.cs_doc.post.dto;
 
 import com.fasoo.cs_doc.post.domain.PostCategory;
+import com.fasoo.cs_doc.post.domain.PostKind;
 
 import java.time.LocalDateTime;
 
@@ -9,6 +10,7 @@ public record PostListItemResponse(
         String title,
         PostCategory category, // Deprecated: 기존 데이터 호환성을 위해 유지
         Long categoryId,
+        PostKind postKind, // DOC | ASSIGNMENT (과제 페이지 여부)
         Boolean isNotice,
         Long viewCount,
         String attachments, // JSON array of attachment URLs

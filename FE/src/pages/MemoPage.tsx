@@ -51,7 +51,7 @@ const MAX_IMAGES = 10;
 
 export default function MemoPage() {
     const [list, setList] = useState<MemoListItem[]>([]);
-    const [totalElements, setTotalElements] = useState(0);
+    const [, setTotalElements] = useState(0);
     const [keyword, setKeyword] = useState("");
     const [searchInput, setSearchInput] = useState("");
     const [loading, setLoading] = useState(true);
@@ -256,6 +256,52 @@ export default function MemoPage() {
         setNewImages((prev) => prev.filter((_, i) => i !== index));
     }, []);
 
+    const handleNewBodyPaste = useCallback(
+        async (e: React.ClipboardEvent) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.kind === "file" && item.type.startsWith("image/")) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    if (file && newImages.length < MAX_IMAGES) {
+                        try {
+                            const { url } = await uploadImage(file);
+                            setNewImages((prev) => [...prev, { url, name: file.name }]);
+                        } catch (err) {
+                            setError(err instanceof ApiError ? err.message : "이미지 업로드 실패");
+                        }
+                    }
+                    return;
+                }
+            }
+        },
+        [newImages.length]
+    );
+
+    const handleEditBodyPaste = useCallback(
+        async (e: React.ClipboardEvent) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.kind === "file" && item.type.startsWith("image/")) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    if (file && editImages.length < MAX_IMAGES) {
+                        try {
+                            const { url } = await uploadImage(file);
+                            setEditImages((prev) => [...prev, { url, name: file.name }]);
+                        } catch (err) {
+                            setError(err instanceof ApiError ? err.message : "이미지 업로드 실패");
+                        }
+                    }
+                    return;
+                }
+            }
+        },
+        [editImages.length]
+    );
+
     // Splitter 드래그 핸들러
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
@@ -334,12 +380,12 @@ export default function MemoPage() {
                         onClick={startNew}
                         style={{
                             padding: "10px 14px",
-                            borderRadius: 10,
-                            border: "1px solid #444",
+                            borderRadius: 6,
+                            border: "none",
                             textDecoration: "none",
                             color: "#fff",
-                            background: "#2563eb",
-                            fontWeight: 800,
+                            background: "#3B82F6",
+                            fontWeight: 500,
                             cursor: "pointer",
                         }}
                     >
@@ -521,9 +567,10 @@ export default function MemoPage() {
                             }}
                         />
                         <textarea
-                            placeholder="내용"
+                            placeholder="내용 (이미지는 Ctrl+V로 붙여넣기 가능)"
                             value={newBody}
                             onChange={(e) => setNewBody(e.target.value)}
+                            onPaste={handleNewBodyPaste}
                             style={{
                                 flex: 1,
                                 minHeight: 120,
@@ -671,6 +718,7 @@ export default function MemoPage() {
                                 <textarea
                                     value={editBody}
                                     onChange={(e) => setEditBody(e.target.value)}
+                                    onPaste={handleEditBodyPaste}
                                     style={{
                                         flex: 1,
                                         minHeight: 120,

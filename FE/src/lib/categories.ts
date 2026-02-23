@@ -71,10 +71,13 @@ export function categoryCodeToApiCategory(code: string | null | undefined): ApiC
  * URL 쿼리 cat 값 → BE categories 배열
  * cat=INCIDENT → [INCIDENT], 없거나 비유효 → 전체 [SYSTEM, INCIDENT, TRAINING]
  */
+const ALL_API_CATEGORIES: ApiCategory[] = ["SYSTEM", "INCIDENT", "TRAINING"];
+
 export function getApiCategoriesFromCatParam(catParam: string | null): ApiCategory[] {
     if (catParam != null && isApiCategory(catParam)) {
         return [catParam];
     }
+    return ALL_API_CATEGORIES;
 }
 
 /**

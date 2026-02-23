@@ -1,8 +1,8 @@
 spring:
   datasource:
     # url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    # H2 파일 경로를 base-dir과 일치시키기 위해 CS_DOC_BASE_DIR 환경변수 사용
-    url: jdbc:h2:file:${CS_DOC_BASE_DIR:D:\\Project}/CS_DOC_DATA/h2/csdoc;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    # H2 파일 경로: app.storage.base-dir과 동일한 CS_DOC_BASE_DIR 사용 (application.yml 주석 참고)
+    url: jdbc:h2:file:${CS_DOC_BASE_DIR:${user.home}/Documents}/CS_DOC_DATA/h2/csdoc;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
     username: sa
     password:
@@ -31,7 +31,7 @@ spring:
 
 app:
   storage:
-    base-dir: ${CS_DOC_BASE_DIR:D:\\Project}
+    base-dir: ${CS_DOC_BASE_DIR:${user.home}/Documents}
     md-root: ${app.storage.base-dir}/CS_DOC_DATA/md
     upload-dir: ${app.storage.base-dir}/CS_DOC_DATA/uploads
 

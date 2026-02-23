@@ -1,8 +1,10 @@
 package com.fasoo.cs_doc.config;
 
+import com.fasoo.cs_doc.assignment.repository.*;
 import com.fasoo.cs_doc.category.config.CategoryDataLoader;
 import com.fasoo.cs_doc.category.repository.CategoryRepository;
 import com.fasoo.cs_doc.global.config.StorageProperties;
+import com.fasoo.cs_doc.post.repository.CommentRepository;
 import com.fasoo.cs_doc.post.repository.PostRepository;
 import com.fasoo.cs_doc.post.repository.PostVersionRepository;
 import jakarta.persistence.EntityManager;
@@ -19,9 +21,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * 카테고리·게시글 데이터 초기화 서비스.
- * data-init 프로필로 실행 시 모든 게시글·버전·카테고리를 삭제 후, 기본 카테고리만 재생성.
- * Post ID 시퀀스 1부터 재시작, md 파일 정리 포함.
+ * 카테고리·게시글·실습(과제)·댓글 데이터 초기화 서비스.
+ * data-init 프로필로 실행 시 실습/댓글/게시글/버전/카테고리를 모두 삭제 후, 기본 카테고리만 재생성.
+ * Post ID 시퀀스 1부터 재시작, posts/*.md 및 assignments/* 디스크 정리 포함.
  * 사용: java -jar app.jar --spring.profiles.active=data-init
  */
 @Service
@@ -29,6 +31,12 @@ public class DataInitService {
 
     private static final Logger log = LoggerFactory.getLogger(DataInitService.class);
 
+    private final AssignmentTaskReviewRepository assignmentTaskReviewRepository;
+    private final AssignmentReviewRepository assignmentReviewRepository;
+    private final AssignmentTaskSubmissionRepository assignmentTaskSubmissionRepository;
+    private final AssignmentSubmissionRepository assignmentSubmissionRepository;
+    private final AssignmentTaskRepository assignmentTaskRepository;
+    private final CommentRepository commentRepository;
     private final PostVersionRepository postVersionRepository;
     private final PostRepository postRepository;
     private final CategoryRepository categoryRepository;
@@ -39,11 +47,23 @@ public class DataInitService {
     private EntityManager entityManager;
 
     public DataInitService(
+            AssignmentTaskReviewRepository assignmentTaskReviewRepository,
+            AssignmentReviewRepository assignmentReviewRepository,
+            AssignmentTaskSubmissionRepository assignmentTaskSubmissionRepository,
+            AssignmentSubmissionRepository assignmentSubmissionRepository,
+            AssignmentTaskRepository assignmentTaskRepository,
+            CommentRepository commentRepository,
             PostVersionRepository postVersionRepository,
             PostRepository postRepository,
             CategoryRepository categoryRepository,
             ApplicationContext applicationContext,
             StorageProperties storageProperties) {
+        this.assignmentTaskReviewRepository = assignmentTaskReviewRepository;
+        this.assignmentReviewRepository = assignmentReviewRepository;
+        this.assignmentTaskSubmissionRepository = assignmentTaskSubmissionRepository;
+        this.assignmentSubmissionRepository = assignmentSubmissionRepository;
+        this.assignmentTaskRepository = assignmentTaskRepository;
+        this.commentRepository = commentRepository;
         this.postVersionRepository = postVersionRepository;
         this.postRepository = postRepository;
         this.categoryRepository = categoryRepository;
@@ -52,33 +72,62 @@ public class DataInitService {
     }
 
     /**
-     * 모든 게시글·버전·카테고리 삭제 후 기본 카테고리 재생성.
-     * FK 순서: post_version → post → category
-     * ID 시퀀스를 1부터 재시작, posts/*.md 파일 삭제
+     * 실습(과제)·댓글·게시글·버전·카테고리 삭제 후 기본 카테고리 재생성.
+     * FK 순서: assignment_task_review → assignment_review → assignment_task_submission → assignment_submission, assignment_task → comment → post_version → post → category
+     * ID 시퀀스 1부터 재시작, posts/*.md 및 assignments/* 디스크 정리
      */
     @Transactional
     public void resetAll() {
-        log.info("데이터 초기화 시작: post_version, post, category 삭제 후 카테고리 재생성");
+        log.info("데이터 초기화 시작: 실습·댓글·post_version·post·category 삭제 후 카테고리 재생성");
+
+        long n1 = assignmentTaskReviewRepository.count();
+        assignmentTaskReviewRepository.deleteAllInBatch();
+        log.info("assignment_task_review {}건 삭제 완료", n1);
+
+        long n2 = assignmentReviewRepository.count();
+        assignmentReviewRepository.deleteAllInBatch();
+        log.info("assignment_review {}건 삭제 완료", n2);
+
+        long n3 = assignmentTaskSubmissionRepository.count();
+        assignmentTaskSubmissionRepository.deleteAllInBatch();
+        log.info("assignment_task_submission {}건 삭제 완료", n3);
+
+        long n4 = assignmentSubmissionRepository.count();
+        assignmentSubmissionRepository.deleteAllInBatch();
+        log.info("assignment_submission {}건 삭제 완료", n4);
+
+        long n5 = assignmentTaskRepository.count();
+        assignmentTaskRepository.deleteAllInBatch();
+        log.info("assignment_task {}건 삭제 완료", n5);
+
+        long commentCount = commentRepository.count();
+        commentRepository.deleteAllInBatch();
+        log.info("comment {}건 삭제 완료", commentCount);
 
         long postVersionCount = postVersionRepository.count();
-        long postCount = postRepository.count();
-        long categoryCount = categoryRepository.count();
-
         postVersionRepository.deleteAllInBatch();
         log.info("post_version {}건 삭제 완료", postVersionCount);
 
+        long postCount = postRepository.count();
         postRepository.deleteAllInBatch();
         log.info("post {}건 삭제 완료", postCount);
 
+        long categoryCount = categoryRepository.count();
         categoryRepository.deleteAllInBatch();
         log.info("category {}건 삭제 완료", categoryCount);
 
         // H2 ID 시퀀스 1부터 재시작
         try {
+            entityManager.createNativeQuery("ALTER TABLE assignment_task_review ALTER COLUMN id RESTART WITH 1").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE assignment_review ALTER COLUMN id RESTART WITH 1").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE assignment_task_submission ALTER COLUMN id RESTART WITH 1").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE assignment_submission ALTER COLUMN id RESTART WITH 1").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE assignment_task ALTER COLUMN id RESTART WITH 1").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE comment ALTER COLUMN id RESTART WITH 1").executeUpdate();
             entityManager.createNativeQuery("ALTER TABLE post_version ALTER COLUMN id RESTART WITH 1").executeUpdate();
             entityManager.createNativeQuery("ALTER TABLE post ALTER COLUMN id RESTART WITH 1").executeUpdate();
             entityManager.createNativeQuery("ALTER TABLE category ALTER COLUMN id RESTART WITH 1").executeUpdate();
-            log.info("post_version, post, category ID 시퀀스 1부터 재시작 완료");
+            log.info("모든 테이블 ID 시퀀스 1부터 재시작 완료");
         } catch (Exception e) {
             log.warn("ID 시퀀스 재시작 실패 (H2가 아닐 수 있음): {}", e.getMessage());
         }
@@ -87,10 +136,10 @@ public class DataInitService {
         CategoryDataLoader loader = applicationContext.getBean(CategoryDataLoader.class);
         loader.run(new DefaultApplicationArguments(new String[0]));
 
-        // posts/*.md 파일 삭제 (기존 md와 ID 충돌 방지)
         deletePostsMdFiles();
+        deleteAssignmentsDir();
 
-        log.info("데이터 초기화 완료: 신입 교육 자료, 공지사항, 기존 인력 교육 카테고리 생성, ID 시퀀스 1부터 시작");
+        log.info("데이터 초기화 완료: 실습·댓글·게시글·버전 삭제, 기본 카테고리만 유지, ID 시퀀스 1부터 시작");
     }
 
     private void deletePostsMdFiles() {
@@ -105,6 +154,28 @@ public class DataInitService {
             log.info("posts/*.md {}건 삭제 완료", mdFiles.size());
         } catch (IOException e) {
             log.warn("posts md 파일 삭제 실패: {}", e.getMessage());
+        }
+    }
+
+    /** assignments/ 디렉터리 전체 삭제 (실습 세부 과제·사용자 답변 md 등) */
+    private void deleteAssignmentsDir() {
+        if (storageProperties.mdRoot() == null || storageProperties.mdRoot().isBlank()) return;
+        Path assignmentsDir = Path.of(storageProperties.mdRoot()).resolve("assignments");
+        if (!Files.isDirectory(assignmentsDir)) return;
+        try {
+            try (var stream = Files.walk(assignmentsDir)) {
+                stream.sorted((a, b) -> -a.compareTo(b)).forEach(p -> {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (IOException e) {
+                        log.warn("assignments 파일 삭제 실패 {}: {}", p, e.getMessage());
+                    }
+                });
+            }
+            Files.deleteIfExists(assignmentsDir);
+            log.info("assignments/ 디렉터리 삭제 완료");
+        } catch (IOException e) {
+            log.warn("assignments 디렉터리 삭제 실패: {}", e.getMessage());
         }
     }
 }

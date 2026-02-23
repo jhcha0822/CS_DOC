@@ -2,6 +2,7 @@ package com.fasoo.cs_doc.post.domain;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 @Entity
 @Table(
@@ -23,6 +24,13 @@ public class Post {
     private String title;
 
     /**
+     * 요약 제목 (과제의 경우 내용 요약, 예: "메모장이 열리지 않음")
+     * 게시글 목록의 title과는 다른, 내용 요약과 같은 영역
+     */
+    @Column(name = "summary_title", nullable = true, length = TITLE_MAX_LENGTH)
+    private String summaryTitle;
+
+    /**
      * DB에는 본문 텍스트가 아니라 "md 파일 경로(루트 기준 상대경로)"만 저장
      * 예: 2026/01/25/1_abcd1234.md
      */
@@ -35,6 +43,19 @@ public class Post {
 
     @Column(name = "category_id", nullable = true)
     private Long categoryId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "post_kind", nullable = true, length = 20)
+    private PostKind postKind;
+
+    @Column(name = "due_at", nullable = true)
+    private LocalDateTime dueAt;
+
+    /**
+     * 과제 배점 (ASSIGNMENT인 경우만 사용, 기본값 100)
+     */
+    @Column(name = "max_score", nullable = true)
+    private Integer maxScore;
 
     @Column(name = "is_notice", nullable = false)
     private Boolean isNotice = false;
@@ -94,9 +115,13 @@ public class Post {
 
     public Long getId() { return id; }
     public String getTitle() { return title; }
+    public String getSummaryTitle() { return summaryTitle; }
     public String getContentMdPath() { return contentMdPath; }
     public PostCategory getCategory() { return category; }
     public Long getCategoryId() { return categoryId; }
+    public PostKind getPostKind() { return postKind; }
+    public LocalDateTime getDueAt() { return dueAt; }
+    public Integer getMaxScore() { return maxScore; }
     public Boolean getIsNotice() { return isNotice != null ? isNotice : false; }
     public Long getViewCount() { return viewCount != null ? viewCount : 0L; }
     public String getAttachments() { return attachments; }
@@ -115,6 +140,13 @@ public class Post {
             throw new IllegalArgumentException("title length must be <= " + TITLE_MAX_LENGTH);
         }
         this.title = title;
+    }
+
+    public void changeSummaryTitle(String summaryTitle) {
+        if (summaryTitle != null && summaryTitle.length() > TITLE_MAX_LENGTH) {
+            throw new IllegalArgumentException("summaryTitle length must be <= " + TITLE_MAX_LENGTH);
+        }
+        this.summaryTitle = summaryTitle != null && summaryTitle.isBlank() ? null : summaryTitle;
     }
 
     /**
@@ -154,6 +186,21 @@ public class Post {
             throw new IllegalArgumentException("categoryId must not be null");
         }
         this.categoryId = categoryId;
+    }
+
+    public void changePostKind(PostKind postKind) {
+        this.postKind = postKind;
+    }
+
+    public void changeDueAt(LocalDateTime dueAt) {
+        this.dueAt = dueAt;
+    }
+
+    public void changeMaxScore(Integer maxScore) {
+        if (maxScore != null && (maxScore < 1 || maxScore > 1000)) {
+            throw new IllegalArgumentException("maxScore must be between 1 and 1000");
+        }
+        this.maxScore = maxScore;
     }
 
     public void changeIsNotice(Boolean isNotice) {

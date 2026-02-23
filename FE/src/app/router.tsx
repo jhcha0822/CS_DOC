@@ -7,6 +7,7 @@ import PostEditorPage from "../pages/PostEditorPage";
 import CategoryManagePage from "../pages/CategoryManagePage";
 import PostVersionHistoryPage from "../pages/PostVersionHistoryPage";
 import PostVersionDetailPage from "../pages/PostVersionDetailPage";
+import AssignmentPage from "../pages/AssignmentPage";
 import MemoPage from "../pages/MemoPage";
 import UserManagePage from "../pages/UserManagePage";
 
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
             { path: "posts", element: <PostListPage /> },
             { path: "posts/new", element: <PostEditorPage /> },
             { path: "posts/:id", element: <PostDetailPage /> },
+            { path: "posts/:id/assignment", element: <AssignmentPage /> },
             { path: "posts/:id/edit", element: <PostEditorPage /> },
             { path: "categories/manage", element: <CategoryManagePage /> },
             { path: "posts/versions", element: <PostVersionHistoryPage /> },

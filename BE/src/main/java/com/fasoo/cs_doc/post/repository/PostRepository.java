@@ -1,6 +1,7 @@
 package com.fasoo.cs_doc.post.repository;
 
 import com.fasoo.cs_doc.post.domain.Post;
+import com.fasoo.cs_doc.post.domain.PostKind;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,6 +15,9 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     Page<Post> findByCategoryIdIn(List<Long> categoryIds, Pageable pageable);
     Page<Post> findByCategoryIdInAndTitleContainingIgnoreCase(List<Long> categoryIds, String keyword, Pageable pageable);
     List<Post> findByCategoryIdInOrderByCreatedAtDesc(List<Long> categoryIds);
+
+    /** 해당 카테고리를 참조하는 게시글 수 (삭제 여부 무관) */
+    long countByCategoryId(Long categoryId);
     
     // 삭제되지 않은 게시글 조회 (공지사항 포함, 카테고리 필터)
     Page<Post> findByDeletedFalseAndCategoryIdIn(List<Long> categoryIds, Pageable pageable);
@@ -27,6 +31,8 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     Page<Post> findByIsNoticeFalseAndDeletedFalseAndTitleContainingIgnoreCase(String keyword, Pageable pageable);
     Page<Post> findByIsNoticeFalseAndDeletedFalseAndCategoryIdIn(List<Long> categoryIds, Pageable pageable);
     Page<Post> findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(List<Long> categoryIds, String keyword, Pageable pageable);
+    Page<Post> findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndPostKind(List<Long> categoryIds, PostKind postKind, Pageable pageable);
+    Page<Post> findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndPostKindAndTitleContainingIgnoreCase(List<Long> categoryIds, PostKind postKind, String keyword, Pageable pageable);
     
     // category(enum) 기반 조회 (기존 데이터 호환성, 삭제되지 않은 것만)
     Page<Post> findByIsNoticeFalseAndDeletedFalseAndCategory(com.fasoo.cs_doc.post.domain.PostCategory category, Pageable pageable);

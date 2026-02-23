@@ -1,19 +1,36 @@
 package com.fasoo.cs_doc.post.dto;
 
 import com.fasoo.cs_doc.post.domain.PostCategory;
+import com.fasoo.cs_doc.post.domain.PostKind;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record PostDetailResponse(
         Long id,
         String title,
-        PostCategory category, // Deprecated: 기존 데이터 호환성을 위해 유지
+        String summaryTitle,
+        PostCategory category,
         Long categoryId,
         Boolean isNotice,
         String contentMd,
         Long viewCount,
-        String attachments, // JSON array of attachment URLs
+        String attachments,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
-        String updatedByName // 최종 수정자 이름
-) {}
+        String createdByName,
+        String updatedByName,
+        Integer versionNumber,
+        PostKind postKind,
+        Integer maxScore,
+        List<AssignmentTaskDetail> assignmentTasks // 세부 실습 목록 (ASSIGNMENT인 경우)
+) {
+    /** 세부 실습 1건 (수정 폼용) */
+    public record AssignmentTaskDetail(
+            Long taskId,
+            String title,
+            String descriptionMarkdown,
+            int sortOrder,
+            int maxScore
+    ) {}
+}

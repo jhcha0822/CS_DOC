@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import SideNav from "../components/SideNav";
+import Header from "../components/Header";
 import { getCurrentUser } from "../lib/auth";
 
 export default function AppLayout() {
@@ -27,37 +28,42 @@ export default function AppLayout() {
                 height: "100%",
                 overflow: "hidden",
                 boxSizing: "border-box",
-                background: "var(--app-bg)",
+                background: "#ffffff",
             }}
         >
+            {/* 상단 헤더 */}
+            <Header />
+
+            {/* 사이드바 */}
             <aside
                 style={{
                     position: "fixed",
                     left: 0,
-                    top: 0,
-                    width: 280,
-                    height: "100vh",
-                    borderRight: "1px solid var(--app-border)",
-                    padding: 16,
-                    background: "var(--app-bg-sidebar)",
-                    color: "var(--app-text)",
+                    top: 64, // 헤더 높이만큼 아래로
+                    width: 240,
+                    height: "calc(100vh - 64px)",
+                    borderRight: "1px solid #e5e7eb",
+                    padding: "16px 8px",
+                    background: "#ffffff",
+                    color: "#111827",
                     overflowY: "auto",
                     boxSizing: "border-box",
                 }}
             >
-                <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 12 }}>CS_DOC</div>
                 <SideNav />
             </aside>
 
+            {/* 메인 콘텐츠 영역 */}
             <main
                 style={{
-                    marginLeft: 280,
-                    width: "calc(100vw - 280px)",
-                    maxWidth: "calc(100vw - 280px)",
-                    height: "100vh",
-                    padding: 16,
-                    background: "var(--app-bg)",
-                    color: "var(--app-text)",
+                    marginLeft: 240,
+                    marginTop: 64, // 헤더 높이만큼 아래로
+                    width: "calc(100vw - 240px)",
+                    maxWidth: "calc(100vw - 240px)",
+                    height: "calc(100vh - 64px)",
+                    padding: 24,
+                    background: "#ffffff",
+                    color: "#111827",
                     overflow: "auto",
                     overflowX: "hidden",
                     boxSizing: "border-box",

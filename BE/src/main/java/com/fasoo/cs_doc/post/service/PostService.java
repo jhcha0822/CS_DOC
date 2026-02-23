@@ -8,8 +8,12 @@ import com.fasoo.cs_doc.member.repository.MemberRepository;
 import com.fasoo.cs_doc.post.domain.Post;
 import com.fasoo.cs_doc.post.repository.CommentRepository;
 import com.fasoo.cs_doc.post.domain.PostCategory;
+import com.fasoo.cs_doc.post.domain.PostKind;
 import com.fasoo.cs_doc.post.domain.PostVersion;
 import com.fasoo.cs_doc.post.dto.*;
+import com.fasoo.cs_doc.assignment.domain.AssignmentTask;
+import com.fasoo.cs_doc.assignment.dto.AssignmentTaskItemRequest;
+import com.fasoo.cs_doc.assignment.repository.AssignmentTaskRepository;
 import com.fasoo.cs_doc.post.repository.PostRepository;
 import com.fasoo.cs_doc.post.repository.PostVersionRepository;
 import jakarta.persistence.EntityManager;
@@ -38,6 +42,7 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final PostVersionRepository postVersionRepository;
+    private final AssignmentTaskRepository assignmentTaskRepository;
     private final PostContentStorage storage;
     private final CategoryRepository categoryRepository;
     private final MarkdownImageProcessor imageProcessor;
@@ -48,9 +53,10 @@ public class PostService {
     @PersistenceContext
     private EntityManager entityManager;
 
-    public PostService(PostRepository postRepository, PostVersionRepository postVersionRepository, PostContentStorage storage, CategoryRepository categoryRepository, MarkdownImageProcessor imageProcessor, AttachmentStorage attachmentStorage, MemberRepository memberRepository, CommentRepository commentRepository) {
+    public PostService(PostRepository postRepository, PostVersionRepository postVersionRepository, AssignmentTaskRepository assignmentTaskRepository, PostContentStorage storage, CategoryRepository categoryRepository, MarkdownImageProcessor imageProcessor, AttachmentStorage attachmentStorage, MemberRepository memberRepository, CommentRepository commentRepository) {
         this.postRepository = postRepository;
         this.postVersionRepository = postVersionRepository;
+        this.assignmentTaskRepository = assignmentTaskRepository;
         this.storage = storage;
         this.categoryRepository = categoryRepository;
         this.imageProcessor = imageProcessor;
@@ -121,6 +127,7 @@ public class PostService {
                 p.getTitle(),
                 category,
                 p.getCategoryId(),
+                p.getPostKind(),
                 p.getIsNotice(),
                 p.getViewCount(),
                 p.getAttachments(),
@@ -155,7 +162,7 @@ public class PostService {
      * 공지사항이 페이지 크기를 점유하므로, 일반 글은 (페이지 크기 - 공지사항 개수)만큼만 조회됨
      */
     @Transactional(readOnly = true)
-    public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword, String searchIn, List<String> categories, Long categoryId) {
+    public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword, String searchIn, List<String> categories, Long categoryId, PostKind postKind) {
         String kw = (keyword == null) ? null : keyword.trim();
         boolean isFirstPage = pageable.getPageNumber() == 0;
         
@@ -218,6 +225,8 @@ public class PostService {
                 // 공지사항 카테고리인 경우 공지사항도 포함하여 조회
                 if (isNoticeCategory) {
                     page = postRepository.findByDeletedFalseAndCategoryIdIn(targetCategoryIds, largePageable);
+                } else if (postKind != null) {
+                    page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndPostKind(targetCategoryIds, postKind, largePageable);
                 } else {
                     page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdIn(targetCategoryIds, largePageable);
                 }
@@ -232,6 +241,8 @@ public class PostService {
                 // 공지사항 카테고리인 경우 공지사항도 포함하여 조회
                 if (isNoticeCategory) {
                     page = postRepository.findByDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(targetCategoryIds, kw, largePageable);
+                } else if (postKind != null) {
+                    page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndPostKindAndTitleContainingIgnoreCase(targetCategoryIds, postKind, kw, largePageable);
                 } else {
                     page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(targetCategoryIds, kw, largePageable);
                 }
@@ -315,7 +326,7 @@ public class PostService {
      */
     @Transactional(readOnly = true)
     public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword) {
-        return list(pageable, keyword, null, null, null);
+        return list(pageable, keyword, null, null, null, null);
     }
 
     @Transactional
@@ -329,8 +340,18 @@ public class PostService {
                 .orElseThrow(() -> new NotFoundException("Category", req.categoryId()));
         
         Post post = new Post(req.title(), null);
+        if (req.summaryTitle() != null) {
+            post.changeSummaryTitle(req.summaryTitle());
+        }
         post.changeCategoryId(req.categoryId());
         post.changeIsNotice(req.isNotice() != null ? req.isNotice() : false);
+        if (req.postKind() != null) {
+            post.changePostKind(req.postKind());
+            if (req.postKind() == PostKind.ASSIGNMENT) {
+                // 과제인 경우 maxScore 설정 (기본값 100)
+                post.changeMaxScore(req.maxScore() != null ? req.maxScore() : 100);
+            }
+        }
         // 데이터베이스 스키마 호환성을 위해 category 필드에 기본값 설정 (deprecated)
         post.changeCategory(PostCategory.TRAINING);
         // 작성자 정보 기록
@@ -346,6 +367,23 @@ public class PostService {
 
         // 버전 정보 저장 (초기 버전)
         savePostVersion(saved.getId(), req.title(), req.contentMd(), true, saved.getUpdatedBy());
+
+        // ASSIGNMENT인 경우 세부 실습 목록 저장 (배점 합 = maxScore)
+        if (saved.getPostKind() == PostKind.ASSIGNMENT && req.tasks() != null && !req.tasks().isEmpty()) {
+            int totalScore = req.tasks().stream().mapToInt(AssignmentTaskItemRequest::maxScore).sum();
+            int expectedScore = saved.getMaxScore() != null && saved.getMaxScore() > 0 ? saved.getMaxScore() : 100;
+            if (totalScore != expectedScore) {
+                throw new IllegalArgumentException("세부 실습 배점 합이 " + expectedScore + "점이어야 합니다. 현재 합: " + totalScore);
+            }
+            int sortOrder = 0;
+            for (AssignmentTaskItemRequest t : req.tasks()) {
+                AssignmentTask task = new AssignmentTask(saved.getId(), t.title(), sortOrder++, t.maxScore());
+                AssignmentTask savedTask = assignmentTaskRepository.save(task);
+                String path = storage.writeAssignmentTaskDescription(saved.getId(), savedTask.getId(), t.descriptionMarkdown() != null ? t.descriptionMarkdown() : "");
+                savedTask.changeDescriptionMdPath(path);
+                assignmentTaskRepository.save(savedTask);
+            }
+        }
 
         return toResponse(saved);
     }
@@ -365,11 +403,38 @@ public class PostService {
                 ? null
                 : storage.read(mdPath);
 
+        String createdByName = getUserName(post.getCreatedBy());
         String updatedByName = getUserName(post.getUpdatedBy());
+        
+        // 최신 버전 번호 조회
+        Integer versionNumber = postVersionRepository.findFirstByPostIdOrderByVersionNumberDesc(post.getId())
+                .map(PostVersion::getVersionNumber)
+                .orElse(1); // 버전이 없으면 1로 설정
+
+        // ASSIGNMENT인 경우 세부 실습 목록 (수정 폼용)
+        List<PostDetailResponse.AssignmentTaskDetail> assignmentTasks = null;
+        if (post.getPostKind() == PostKind.ASSIGNMENT) {
+            List<AssignmentTask> tasks = assignmentTaskRepository.findByPostIdOrderBySortOrderAsc(post.getId());
+            assignmentTasks = tasks.stream()
+                    .map(task -> {
+                        String descMd = task.getDescriptionMdPath() != null && !task.getDescriptionMdPath().isBlank()
+                                ? storage.readOptional(task.getDescriptionMdPath())
+                                : "";
+                        return new PostDetailResponse.AssignmentTaskDetail(
+                                task.getId(),
+                                task.getTitle(),
+                                descMd,
+                                task.getSortOrder(),
+                                task.getMaxScore()
+                        );
+                    })
+                    .toList();
+        }
         
         return new PostDetailResponse(
                 post.getId(),
                 post.getTitle(),
+                post.getSummaryTitle(),
                 post.getCategory(), // 기존 데이터 호환성
                 post.getCategoryId(),
                 post.getIsNotice(),
@@ -378,7 +443,12 @@ public class PostService {
                 post.getAttachments(),
                 post.getCreatedAt(),
                 post.getUpdatedAt(),
-                updatedByName
+                createdByName,
+                updatedByName,
+                versionNumber,
+                post.getPostKind(),
+                post.getMaxScore(),
+                assignmentTasks
         );
     }
 
@@ -426,7 +496,7 @@ public class PostService {
     }
 
     @Transactional
-    public PostResponse createByUpload(MultipartFile file, String title, PostCategory category, Long categoryId, Boolean isNotice, List<MultipartFile> images, List<MultipartFile> attachments, Long userId) {
+    public PostResponse createByUpload(MultipartFile file, String title, PostCategory category, Long categoryId, Boolean isNotice, List<MultipartFile> images, List<MultipartFile> attachments, Long userId, PostKind postKind) {
         String md = readMarkdownFromMultipart(file);
         
         // 업로드된 이미지 파일들을 파일명으로 매핑
@@ -450,6 +520,9 @@ public class PostService {
         Post post = new Post(finalTitle, null);
         post.changeCategoryId(categoryId);
         post.changeIsNotice(isNotice != null ? isNotice : false);
+        if (postKind != null) {
+            post.changePostKind(postKind);
+        }
         // 데이터베이스 스키마 호환성을 위해 category 필드에 기본값 설정 (deprecated)
         post.changeCategory(PostCategory.TRAINING);
         // 작성자 정보 기록
@@ -709,6 +782,11 @@ public class PostService {
             post.changeTitle(req.title());
         }
 
+        // 1-1) summaryTitle 갱신
+        if (req.summaryTitle() != null) {
+            post.changeSummaryTitle(req.summaryTitle());
+        }
+
         // 2) categoryId 갱신
         if (req.categoryId() != null) {
             Category category = categoryRepository.findById(req.categoryId())
@@ -719,6 +797,11 @@ public class PostService {
         // 2-2) isNotice 갱신
         if (req.isNotice() != null) {
             post.changeIsNotice(req.isNotice());
+        }
+
+        // 2-3) maxScore 갱신 (과제인 경우만)
+        if (req.maxScore() != null && post.getPostKind() == PostKind.ASSIGNMENT) {
+            post.changeMaxScore(req.maxScore());
         }
 
         // 수정자 정보 기록
@@ -745,6 +828,49 @@ public class PostService {
             // 제목/카테고리 등 메타데이터만 변경된 경우에도 버전 저장
             String versionTitle = req.title() != null && !req.title().isBlank() ? req.title() : post.getTitle();
             savePostVersionForMetadataChange(post.getId(), versionTitle, post.getUpdatedBy());
+        }
+
+        // 4) ASSIGNMENT인 경우 세부 실습 목록 동기화 (배점 합 = maxScore)
+        if (post.getPostKind() == PostKind.ASSIGNMENT && req.tasks() != null) {
+            int expectedScore = post.getMaxScore() != null && post.getMaxScore() > 0 ? post.getMaxScore() : 100;
+            if (!req.tasks().isEmpty()) {
+                int totalScore = req.tasks().stream().mapToInt(AssignmentTaskItemRequest::maxScore).sum();
+                if (totalScore != expectedScore) {
+                    throw new IllegalArgumentException("세부 실습 배점 합이 " + expectedScore + "점이어야 합니다. 현재 합: " + totalScore);
+                }
+            }
+            List<AssignmentTask> existingTasks = assignmentTaskRepository.findByPostIdOrderBySortOrderAsc(post.getId());
+            java.util.Set<Long> keptTaskIds = new java.util.HashSet<>();
+            int sortOrder = 0;
+            for (AssignmentTaskItemRequest t : req.tasks()) {
+                String descMd = t.descriptionMarkdown() != null ? t.descriptionMarkdown() : "";
+                if (t.taskId() == null) {
+                    AssignmentTask task = new AssignmentTask(post.getId(), t.title(), sortOrder++, t.maxScore());
+                    AssignmentTask savedTask = assignmentTaskRepository.save(task);
+                    String path = storage.writeAssignmentTaskDescription(post.getId(), savedTask.getId(), descMd);
+                    savedTask.changeDescriptionMdPath(path);
+                    assignmentTaskRepository.save(savedTask);
+                    keptTaskIds.add(savedTask.getId());
+                } else {
+                    AssignmentTask task = existingTasks.stream().filter(et -> et.getId().equals(t.taskId())).findFirst()
+                            .orElseThrow(() -> new NotFoundException("AssignmentTask not found: " + t.taskId()));
+                    task.changeTitle(t.title());
+                    task.changeSortOrder(sortOrder++);
+                    task.changeMaxScore(t.maxScore());
+                    String path = storage.writeAssignmentTaskDescription(post.getId(), task.getId(), descMd);
+                    task.changeDescriptionMdPath(path);
+                    assignmentTaskRepository.save(task);
+                    keptTaskIds.add(task.getId());
+                }
+            }
+            for (AssignmentTask old : existingTasks) {
+                if (!keptTaskIds.contains(old.getId())) {
+                    if (old.getDescriptionMdPath() != null && !old.getDescriptionMdPath().isBlank()) {
+                        storage.deleteIfExists(old.getDescriptionMdPath());
+                    }
+                    assignmentTaskRepository.delete(old);
+                }
+            }
         }
 
         return toResponse(post);

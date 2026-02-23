@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchUsers, createUser, updateUser, deleteUser, type UserItem, type UserCreatePayload, type UserUpdatePayload } from "../lib/api";
+import { fetchUsers, createUser, updateUser, deleteUser, type UserItem, type UserUpdatePayload } from "../lib/api";
 import { ApiError } from "../lib/api";
 
 export default function UserManagePage() {

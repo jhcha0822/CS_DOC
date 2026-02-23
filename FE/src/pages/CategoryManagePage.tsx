@@ -7,6 +7,16 @@ import {
     type CategoryItem,
 } from "../lib/api";
 
+/** id 기준 중복 제거 (첫 번째만 유지). API/상태 오류로 같은 id가 여러 번 들어오는 것 방지 */
+function dedupeById(list: CategoryItem[]): CategoryItem[] {
+    const seen = new Set<number>();
+    return list.filter((c) => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+    });
+}
+
 export default function CategoryManagePage() {
     const [originalItems, setOriginalItems] = useState<CategoryItem[]>([]);
     const [items, setItems] = useState<CategoryItem[]>([]);
@@ -22,8 +32,9 @@ export default function CategoryManagePage() {
         setError(null);
         try {
             const list = await fetchCategories();
-            setOriginalItems(list || []);
-            setItems(list || []);
+            const deduped = dedupeById(list || []);
+            setOriginalItems(deduped);
+            setItems(deduped);
             setHasChanges(false);
             setSelectedId(null);
         } catch (e) {
@@ -48,8 +59,6 @@ export default function CategoryManagePage() {
         setSubmitting(true);
         setError(null);
         try {
-            // 선택된 카테고리가 있고, 그것이 상위 카테고리(depth === 0)이면 그 하위로 추가
-            // 선택된 카테고리가 없거나 하위 카테고리면 상위 카테고리로 추가
             let parentId: number | null = null;
             if (selectedId) {
                 const selected = items.find((c) => c.id === selectedId);
@@ -70,32 +79,22 @@ export default function CategoryManagePage() {
     };
 
     const sortedItems = useMemo(() => {
-        // 계층 구조를 유지하면서 정렬
-        // 1. 상위 카테고리들(depth === 0)을 sortOrder로 정렬
-        const topLevel = items
+        const idUnique = dedupeById(items);
+        const topLevel = idUnique
             .filter((c) => c.depth === 0)
             .sort((a, b) => a.sortOrder - b.sortOrder);
-        
-        // 2. 각 상위 카테고리 아래에 하위 카테고리들을 배치
         const result: CategoryItem[] = [];
-        
         for (const parent of topLevel) {
             result.push(parent);
-            
-            // 해당 상위 카테고리의 하위 카테고리들을 sortOrder로 정렬하여 추가
-            const children = items
+            const children = idUnique
                 .filter((c) => c.parentId === parent.id)
                 .sort((a, b) => a.sortOrder - b.sortOrder);
-            
             result.push(...children);
         }
-        
-        // 3. parentId가 null이 아니지만 상위 카테고리가 없는 경우 처리 (orphan 카테고리)
-        const orphans = items.filter(
-            (c) => c.depth > 0 && !items.some((p) => p.id === c.parentId)
+        const orphans = idUnique.filter(
+            (c) => c.depth > 0 && !idUnique.some((p) => p.id === c.parentId)
         );
         result.push(...orphans);
-        
         return result;
     }, [items]);
 
@@ -108,37 +107,26 @@ export default function CategoryManagePage() {
     }, [sortedItems]);
 
     const recalculateSortOrders = (updatedItems: CategoryItem[]) => {
-        // 1. 상위 카테고리들(depth === 0)을 sortOrder로 정렬
         const topLevel = updatedItems
             .filter((c) => c.depth === 0)
             .sort((a, b) => a.sortOrder - b.sortOrder);
-        
-        // 2. 각 상위 카테고리별로 하위 카테고리들을 정렬
         const result: CategoryItem[] = [];
         let globalOrder = 0;
-        
         for (const parent of topLevel) {
-            // 상위 카테고리 추가
             result.push({ ...parent, sortOrder: globalOrder++ });
-            
-            // 해당 상위 카테고리의 하위 카테고리들 추가
             const children = updatedItems
                 .filter((c) => c.parentId === parent.id)
                 .sort((a, b) => a.sortOrder - b.sortOrder);
-            
             for (const child of children) {
                 result.push({ ...child, sortOrder: globalOrder++ });
             }
         }
-        
-        // 3. parentId가 null이 아니지만 상위 카테고리가 없는 경우 처리 (orphan 카테고리)
         const orphans = updatedItems.filter(
             (c) => c.depth > 0 && !updatedItems.some((p) => p.id === c.parentId)
         );
         for (const orphan of orphans) {
             result.push({ ...orphan, sortOrder: globalOrder++ });
         }
-        
         return result;
     };
 
@@ -152,14 +140,11 @@ export default function CategoryManagePage() {
             if (currentIndex <= 0) return;
             const prevTop = topLevel[currentIndex - 1];
             const updated = items.map((c) => {
-                if (c.id === selectedId) {
-                    return { ...c, sortOrder: prevTop.sortOrder };
-                } else if (c.id === prevTop.id) {
-                    return { ...c, sortOrder: selected.sortOrder };
-                }
+                if (c.id === selectedId) return { ...c, sortOrder: prevTop.sortOrder };
+                if (c.id === prevTop.id) return { ...c, sortOrder: selected.sortOrder };
                 return c;
             });
-            setItems(recalculateSortOrders(updated));
+            setItems(dedupeById(recalculateSortOrders(updated)));
             setHasChanges(true);
         } else {
             const siblings = getChildrenOf(selected.parentId!);
@@ -167,14 +152,11 @@ export default function CategoryManagePage() {
             if (currentIndex > 0) {
                 const prevSibling = siblings[currentIndex - 1];
                 const updated = items.map((c) => {
-                    if (c.id === selectedId) {
-                        return { ...c, sortOrder: prevSibling.sortOrder };
-                    } else if (c.id === prevSibling.id) {
-                        return { ...c, sortOrder: selected.sortOrder };
-                    }
+                    if (c.id === selectedId) return { ...c, sortOrder: prevSibling.sortOrder };
+                    if (c.id === prevSibling.id) return { ...c, sortOrder: selected.sortOrder };
                     return c;
                 });
-                setItems(recalculateSortOrders(updated));
+                setItems(dedupeById(recalculateSortOrders(updated)));
                 setHasChanges(true);
             }
         }
@@ -185,38 +167,28 @@ export default function CategoryManagePage() {
         const selected = items.find((c) => c.id === selectedId);
         if (!selected) return;
         if (selected.depth === 0) {
-            // 상위 카테고리 이동
             const topLevel = getTopLevelCategories();
             const currentIndex = topLevel.findIndex((c) => c.id === selectedId);
             if (currentIndex >= topLevel.length - 1) return;
             const nextTop = topLevel[currentIndex + 1];
-            
-            // sortOrder 교환
             const updated = items.map((c) => {
-                if (c.id === selectedId) {
-                    return { ...c, sortOrder: nextTop.sortOrder };
-                } else if (c.id === nextTop.id) {
-                    return { ...c, sortOrder: selected.sortOrder };
-                }
+                if (c.id === selectedId) return { ...c, sortOrder: nextTop.sortOrder };
+                if (c.id === nextTop.id) return { ...c, sortOrder: selected.sortOrder };
                 return c;
             });
-            setItems(recalculateSortOrders(updated));
+            setItems(dedupeById(recalculateSortOrders(updated)));
             setHasChanges(true);
         } else {
-            // 하위 카테고리 이동
             const siblings = getChildrenOf(selected.parentId!);
             const currentIndex = siblings.findIndex((c) => c.id === selectedId);
             if (currentIndex < siblings.length - 1) {
                 const nextSibling = siblings[currentIndex + 1];
                 const updated = items.map((c) => {
-                    if (c.id === selectedId) {
-                        return { ...c, sortOrder: nextSibling.sortOrder };
-                    } else if (c.id === nextSibling.id) {
-                        return { ...c, sortOrder: selected.sortOrder };
-                    }
+                    if (c.id === selectedId) return { ...c, sortOrder: nextSibling.sortOrder };
+                    if (c.id === nextSibling.id) return { ...c, sortOrder: selected.sortOrder };
                     return c;
                 });
-                setItems(recalculateSortOrders(updated));
+                setItems(dedupeById(recalculateSortOrders(updated)));
                 setHasChanges(true);
             }
         }
@@ -226,12 +198,8 @@ export default function CategoryManagePage() {
         if (selectedId === null) return;
         const selected = items.find((c) => c.id === selectedId);
         if (!selected) return;
-        
-        // 현재 선택된 카테고리의 위치를 sortedItems에서 찾기
         const currentIndex = sortedItems.findIndex((c) => c.id === selectedId);
-        if (currentIndex <= 0) return; // 첫 번째 항목이면 이동할 상위 카테고리가 없음
-        
-        // 위로 올라가면서 가장 가까운 상위 카테고리(depth === 0) 찾기
+        if (currentIndex <= 0) return;
         let targetParent: CategoryItem | null = null;
         for (let i = currentIndex - 1; i >= 0; i--) {
             const item = sortedItems[i];
@@ -240,25 +208,18 @@ export default function CategoryManagePage() {
                 break;
             }
         }
-        
-        if (!targetParent) return; // 상위 카테고리를 찾지 못하면 이동 불가
-        
-        // 선택된 카테고리가 이미 해당 상위 카테고리의 하위인지 확인
-        if (selected.parentId === targetParent.id) return; // 이미 해당 상위 카테고리의 하위이면 이동 불가
-        
-        // 가장 가까운 상위 카테고리의 하위로 이동
+        if (!targetParent || selected.parentId === targetParent.id) return;
         const targetChildren = getChildrenOf(targetParent.id);
         const newSortOrder = targetChildren.length > 0
             ? Math.max(...targetChildren.map((c) => c.sortOrder)) + 1
             : 0;
-        
         const updated = items.map((c) => {
             if (c.id === selectedId) {
                 return { ...c, parentId: targetParent!.id, depth: targetParent!.depth + 1, sortOrder: newSortOrder };
             }
             return c;
         });
-        setItems(recalculateSortOrders(updated));
+        setItems(dedupeById(recalculateSortOrders(updated)));
         setHasChanges(true);
     };
 
@@ -289,7 +250,7 @@ export default function CategoryManagePage() {
             }
             return c;
         });
-        setItems(recalculateSortOrders(updated));
+        setItems(dedupeById(recalculateSortOrders(updated)));
         setHasChanges(true);
     };
 
@@ -306,7 +267,6 @@ export default function CategoryManagePage() {
             }));
             await bulkUpdateCategories(bulkItems);
             await load();
-            // Sidebar 갱신을 위해 페이지 새로고침
             window.location.reload();
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : "저장에 실패했습니다.";
@@ -326,11 +286,28 @@ export default function CategoryManagePage() {
     const topLevelCategories = useMemo(() => getTopLevelCategories(), [getTopLevelCategories]);
     const firstTopCategory = useMemo(() => topLevelCategories[0], [topLevelCategories]);
 
+    const moveInDisabled = useMemo(() => {
+        if (selectedId === null) return true;
+        const selected = items.find((c) => c.id === selectedId);
+        if (!selected) return true;
+        const currentIndex = sortedItems.findIndex((c) => c.id === selectedId);
+        if (currentIndex <= 0) return true;
+        let targetParent: CategoryItem | null = null;
+        for (let i = currentIndex - 1; i >= 0; i--) {
+            if (sortedItems[i].depth === 0) {
+                targetParent = sortedItems[i];
+                break;
+            }
+        }
+        if (!targetParent || selected.parentId === targetParent.id) return true;
+        return false;
+    }, [selectedId, items, sortedItems]);
+
     return (
-        <div>
+        <div className="p-4">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>카테고리 관리</h1>
-                <span style={{ fontSize: 12, opacity: 0.8 }}>추후 RBAC로 페이지 접근 권한 부여 예정</span>
+                <span style={{ fontSize: 12, opacity: 0.8 }}>추후 RBAC으로 페이지 접근 권한 부여 예정</span>
             </div>
 
             <div
@@ -356,7 +333,7 @@ export default function CategoryManagePage() {
                         cursor: selectedId === null || (firstTopCategory && selectedId === firstTopCategory.id) ? "not-allowed" : "pointer",
                     }}
                 >
-                    ▲
+                    ↑
                 </button>
                 <button
                     type="button"
@@ -372,70 +349,20 @@ export default function CategoryManagePage() {
                         cursor: selectedId === null ? "not-allowed" : "pointer",
                     }}
                 >
-                    ▼
+                    ↓
                 </button>
                 <button
                     type="button"
                     onClick={moveIn}
-                    disabled={(() => {
-                        if (selectedId === null) return true;
-                        const selected = items.find((c) => c.id === selectedId);
-                        if (!selected) return true;
-                        const currentIndex = sortedItems.findIndex((c) => c.id === selectedId);
-                        if (currentIndex <= 0) return true; // 첫 번째 항목이면 이동 불가
-                        // 위로 올라가면서 가장 가까운 상위 카테고리(depth === 0) 찾기
-                        let targetParent: CategoryItem | null = null;
-                        for (let i = currentIndex - 1; i >= 0; i--) {
-                            if (sortedItems[i].depth === 0) {
-                                targetParent = sortedItems[i];
-                                break;
-                            }
-                        }
-                        if (!targetParent) return true; // 상위 카테고리를 찾지 못하면 비활성화
-                        // 이미 해당 상위 카테고리의 하위인지 확인
-                        if (selected.parentId === targetParent.id) return true; // 이미 하위이면 비활성화
-                        return false; // 활성화
-                    })()}
-                    title="위의 가장 가까운 상위 카테고리 안으로 이동"
+                    disabled={moveInDisabled}
+                    title="바로 위의 상위 카테고리 안으로 이동"
                     style={{
                         padding: "10px 12px",
                         borderRadius: 8,
                         border: "1px solid #444",
-                        background: (() => {
-                            if (selectedId === null) return "#f0f0f0";
-                            const selected = items.find((c) => c.id === selectedId);
-                            if (!selected) return "#f0f0f0";
-                            const currentIndex = sortedItems.findIndex((c) => c.id === selectedId);
-                            if (currentIndex <= 0) return "#f0f0f0";
-                            let targetParent: CategoryItem | null = null;
-                            for (let i = currentIndex - 1; i >= 0; i--) {
-                                if (sortedItems[i].depth === 0) {
-                                    targetParent = sortedItems[i];
-                                    break;
-                                }
-                            }
-                            if (!targetParent) return "#f0f0f0";
-                            if (selected.parentId === targetParent.id) return "#f0f0f0";
-                            return "#fff";
-                        })(),
-                        color: (() => {
-                            if (selectedId === null) return "#999";
-                            const selected = items.find((c) => c.id === selectedId);
-                            if (!selected) return "#999";
-                            const currentIndex = sortedItems.findIndex((c) => c.id === selectedId);
-                            if (currentIndex <= 0) return "#999";
-                            let targetParent: CategoryItem | null = null;
-                            for (let i = currentIndex - 1; i >= 0; i--) {
-                                if (sortedItems[i].depth === 0) {
-                                    targetParent = sortedItems[i];
-                                    break;
-                                }
-                            }
-                            if (!targetParent) return "#999";
-                            if (selected.parentId === targetParent.id) return "#999";
-                            return "#111";
-                        })(),
-                        cursor: "pointer",
+                        background: moveInDisabled ? "#f0f0f0" : "#fff",
+                        color: moveInDisabled ? "#999" : "#111",
+                        cursor: moveInDisabled ? "not-allowed" : "pointer",
                     }}
                 >
                     →
@@ -472,7 +399,7 @@ export default function CategoryManagePage() {
                         onChange={(e) => setNewLabel(e.target.value)}
                         placeholder={(() => {
                             if (!selectedId) return "카테고리 이름 (상위 카테고리로 추가)";
-                            const selected = items.find(c => c.id === selectedId);
+                            const selected = items.find((c) => c.id === selectedId);
                             if (selected && selected.depth === 0) {
                                 return `카테고리 이름 (${selected.label}의 하위로 추가)`;
                             }
@@ -572,7 +499,6 @@ export default function CategoryManagePage() {
                             ) : (
                                 sortedItems.map((cat, index) => {
                                     const isSelected = selectedId === cat.id;
-                                    const isFirstTop = firstTopCategory && cat.id === firstTopCategory.id;
                                     return (
                                         <tr
                                             key={cat.id}
@@ -591,7 +517,7 @@ export default function CategoryManagePage() {
                                                 <div style={{ marginLeft: cat.depth * 20, display: "flex", alignItems: "center" }}>
                                                     <input
                                                         type="text"
-                                                        value={cat.label}
+                                                        value={items.find((c) => c.id === cat.id)?.label ?? cat.label}
                                                         onClick={(e) => e.stopPropagation()}
                                                         onChange={(e) => {
                                                             const updated = items.map((c) =>

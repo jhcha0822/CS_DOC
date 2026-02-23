@@ -18,6 +18,7 @@ export type PostListItem = {
     updatedAt: string;
     updatedByName: string | null; // 최종 수정자 이름
     commentCount: number | null; // 댓글 수
+    postKind?: string | null; // DOC | ASSIGNMENT
 };
 
 export type PostListResponse = {
@@ -30,9 +31,18 @@ export type PostListResponse = {
     hasPrevious?: boolean;
 };
 
+export type PostDetailAssignmentTask = {
+    taskId: number;
+    title: string;
+    descriptionMarkdown: string;
+    sortOrder: number;
+    maxScore: number;
+};
+
 export type PostDetail = {
     id: number;
     title: string;
+    summaryTitle?: string | null;
     category: string | null; // Deprecated: 기존 데이터 호환성을 위해 유지
     categoryId: number | null;
     isNotice: boolean | null;
@@ -42,6 +52,10 @@ export type PostDetail = {
     updatedAt: string;
     contentMd?: string;
     updatedByName: string | null; // 최종 수정자 이름
+    versionNumber?: number | null;
+    postKind?: string | null; // DOC | ASSIGNMENT
+    maxScore?: number | null;
+    assignmentTasks?: PostDetailAssignmentTask[] | null;
 };
 
 export type PostContentResponse = {
@@ -216,22 +230,40 @@ export async function fetchPostContent(id: number): Promise<PostContentResponse>
     return fetchJson<PostContentResponse>(url.toString());
 }
 
+export type PostTaskItemInput = {
+    taskId?: number | null;
+    title: string;
+    descriptionMarkdown?: string;
+    sortOrder: number;
+    maxScore: number;
+};
+
+/** 게시글 등록/수정 시 세부 실습 입력용. PostTaskItemInput과 동일 */
+export type AssignmentTaskItemInput = PostTaskItemInput;
+
 export type PostCreatePayload = {
     title: string;
+    summaryTitle?: string | null;
     categoryId: number;
     contentMd: string;
     isNotice?: boolean;
+    postKind?: string | null;
+    maxScore?: number | null;
     attachments?: File[];
     userId?: number;
+    tasks?: PostTaskItemInput[];
 };
 
 export type PostPatchPayload = {
     title?: string;
+    summaryTitle?: string | null;
     categoryId?: number;
     markdown?: string;
     isNotice?: boolean;
+    maxScore?: number | null;
     attachments?: File[];
     userId?: number;
+    tasks?: PostTaskItemInput[];
 };
 
 export type PostResponse = {
@@ -251,12 +283,20 @@ export async function createPost(payload: PostCreatePayload): Promise<PostRespon
         categoryId: payload.categoryId,
         contentMd: payload.contentMd,
     };
-    if (payload.isNotice !== undefined) {
-        body.isNotice = payload.isNotice;
+    if (payload.summaryTitle !== undefined) body.summaryTitle = payload.summaryTitle;
+    if (payload.isNotice !== undefined) body.isNotice = payload.isNotice;
+    if (payload.postKind != null && payload.postKind !== "") body.postKind = payload.postKind;
+    if (payload.maxScore != null) body.maxScore = payload.maxScore;
+    if (payload.tasks !== undefined && payload.tasks.length > 0) {
+        body.tasks = payload.tasks.map((t: PostTaskItemInput) => ({
+            taskId: t.taskId ?? null,
+            title: t.title,
+            descriptionMarkdown: t.descriptionMarkdown ?? "",
+            sortOrder: t.sortOrder,
+            maxScore: t.maxScore,
+        }));
     }
-    if (payload.userId !== undefined) {
-        body.userId = payload.userId;
-    }
+    if (payload.userId !== undefined) body.userId = payload.userId;
     const res = await fetch(url.toString(), addAuthHeader({
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -309,6 +349,219 @@ export async function deletePost(id: number): Promise<void> {
     const url = new URL(`/api/posts/${id}`, API_BASE);
     const res = await fetch(url.toString(), addAuthHeader({
         method: "DELETE",
+    }));
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+}
+
+// --- Assignment (실습) ---
+
+export type AssignmentTaskItem = {
+    taskId: number;
+    title: string;
+    descriptionMarkdown: string;
+    sortOrder: number;
+    maxScore: number;
+};
+
+export type AssignmentTaskAnswerItem = { taskId: number; answerMarkdown: string };
+
+export type AssignmentMemberSummary = {
+    memberId: number;
+    username: string;
+    name: string;
+};
+
+export type AssignmentTaskReviewItem = {
+    taskId: number;
+    score: number | null;
+    maxScore: number;
+    feedbackText: string | null;
+};
+
+export type AssignmentReviewItem = {
+    score: number | null;
+    feedbackText: string | null;
+    reviewerId: number | null;
+    reviewerName: string | null;
+    reviewerSummary: AssignmentMemberSummary | null;
+    reviewedAt: string | null;
+    taskReviews: AssignmentTaskReviewItem[] | null;
+};
+
+export type AssignmentMySubmissionItem = {
+    submissionId: number;
+    status: string;
+    answerMarkdown: string | null;
+    taskAnswers: AssignmentTaskAnswerItem[] | null;
+    attachments: string | null;
+    submittedAt: string | null;
+    gradedAt: string | null;
+    review: AssignmentReviewItem | null;
+};
+
+export type AssignmentSubmissionItem = {
+    submissionId: number;
+    submitterId: number;
+    submitterName: string;
+    submitterSummary: AssignmentMemberSummary | null;
+    status: string;
+    answerMarkdown: string | null;
+    taskAnswers: AssignmentTaskAnswerItem[] | null;
+    attachments: string | null;
+    submittedAt: string | null;
+    gradedAt: string | null;
+    review: AssignmentReviewItem | null;
+};
+
+export type AssignmentPageResponse = {
+    postId: number;
+    title: string;
+    summaryTitle: string | null;
+    categoryId: number | null;
+    categoryLabel: string | null;
+    createdBy: number | null;
+    createdByName: string | null;
+    createdAt: string;
+    dueAt: string | null;
+    maxScore: number | null;
+    problemMarkdown: string | null;
+    postAttachments: string | null;
+    tasks: AssignmentTaskItem[];
+    mySubmission: AssignmentMySubmissionItem | null;
+    allSubmissions: AssignmentSubmissionItem[];
+};
+
+export type TaskScoreItem = {
+    taskId: number;
+    score: number;
+    feedbackText?: string | null;
+};
+
+function normalizeReviewItem(r: AssignmentReviewItem | null | undefined): AssignmentReviewItem | null {
+    if (!r) return null;
+    return {
+        ...r,
+        taskReviews: r.taskReviews ?? null,
+    };
+}
+
+export async function fetchAssignmentPage(postId: number): Promise<AssignmentPageResponse | null> {
+    const url = new URL(`/api/posts/${postId}/assignment-page`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader());
+    if (!res.ok) {
+        if (res.status === 404) return null;
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    const raw = (await res.json()) as AssignmentPageResponse;
+    if (raw.mySubmission?.review) {
+        raw.mySubmission.review = normalizeReviewItem(raw.mySubmission.review) as AssignmentReviewItem;
+    }
+    raw.allSubmissions?.forEach((s) => {
+        if (s.review) s.review = normalizeReviewItem(s.review) as AssignmentReviewItem;
+    });
+    return raw;
+}
+
+export async function createMySubmission(postId: number): Promise<void> {
+    const url = new URL(`/api/posts/${postId}/submissions/me`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({ method: "POST" }));
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+}
+
+export async function putSubmissionAnswer(
+    submissionId: number,
+    markdown: string,
+    taskId?: number
+): Promise<void> {
+    const url = new URL(`/api/submissions/${submissionId}/answer`, API_BASE);
+    const body: { taskId?: number; markdown: string } = { markdown };
+    if (taskId != null) body.taskId = taskId;
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    }));
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+}
+
+export async function submitSubmission(submissionId: number): Promise<void> {
+    const url = new URL(`/api/submissions/${submissionId}/submit`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({ method: "POST" }));
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+}
+
+export async function addSubmissionAttachments(submissionId: number, files: File[]): Promise<void> {
+    const url = new URL(`/api/submissions/${submissionId}/attachments`, API_BASE);
+    const form = new FormData();
+    files.forEach((f) => form.append("attachments", f));
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "POST",
+        body: form,
+    }));
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+}
+
+export async function saveReview(
+    submissionId: number,
+    score?: number,
+    feedbackText?: string | null,
+    taskScores?: TaskScoreItem[] | null
+): Promise<void> {
+    const url = new URL(`/api/admin/submissions/${submissionId}/review`, API_BASE);
+    const body: Record<string, unknown> = {};
+    if (score != null) body.score = score;
+    if (feedbackText !== undefined) body.feedbackText = feedbackText ?? null;
+    if (taskScores != null && taskScores.length > 0) {
+        body.taskScores = taskScores.map((t) => ({
+            taskId: t.taskId,
+            score: t.score,
+            feedbackText: t.feedbackText ?? null,
+        }));
+    }
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
     }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
@@ -447,9 +700,20 @@ export async function patchPost(
     const url = new URL(`/api/posts/${id}`, API_BASE);
     const body: Record<string, unknown> = {};
     if (payload.title !== undefined) body.title = payload.title.trim();
+    if (payload.summaryTitle !== undefined) body.summaryTitle = payload.summaryTitle;
     if (payload.categoryId !== undefined) body.categoryId = payload.categoryId;
     if (payload.markdown !== undefined) body.markdown = payload.markdown;
     if (payload.isNotice !== undefined) body.isNotice = payload.isNotice;
+    if (payload.maxScore !== undefined) body.maxScore = payload.maxScore;
+    if (payload.tasks !== undefined) {
+        body.tasks = payload.tasks.map((t: PostTaskItemInput) => ({
+            taskId: t.taskId ?? null,
+            title: t.title,
+            descriptionMarkdown: t.descriptionMarkdown ?? "",
+            sortOrder: t.sortOrder,
+            maxScore: t.maxScore,
+        }));
+    }
     if (payload.userId !== undefined) body.userId = payload.userId;
     const res = await fetch(url.toString(), addAuthHeader({
         method: "PATCH",
@@ -479,7 +743,7 @@ export async function patchPost(
  */
 export async function createPostByUpload(
     file: File,
-    options?: { title?: string; categoryId: number; isNotice?: boolean; images?: File[]; attachments?: File[]; userId?: number }
+    options?: { title?: string; categoryId: number; isNotice?: boolean; postKind?: string; images?: File[]; attachments?: File[]; userId?: number }
 ): Promise<PostResponse> {
     const url = new URL("/api/posts/upload", API_BASE);
     const form = new FormData();
@@ -489,6 +753,7 @@ export async function createPostByUpload(
     if (options?.isNotice !== undefined) {
         form.append("isNotice", String(options.isNotice));
     }
+    if (options?.postKind) form.append("postKind", options.postKind);
     if (options?.userId != null) {
         form.append("userId", String(options.userId));
     }
@@ -781,6 +1046,26 @@ export async function createCategory(payload: { label: string; parentId?: number
     return res.json() as Promise<CategoryItem>;
 }
 
+export async function deleteCategory(id: number): Promise<void> {
+    const url = new URL(`/api/categories/${id}`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({ method: "DELETE" }));
+    if (!res.ok) {
+        const contentType = res.headers.get("content-type") || "";
+        let message = "";
+        if (contentType.includes("application/json")) {
+            try {
+                const data = (await res.json()) as { message?: string };
+                message = data.message || "";
+            } catch {
+                message = await res.text().catch(() => "");
+            }
+        } else {
+            message = await res.text().catch(() => "");
+        }
+        throw new ApiError(message || `HTTP ${res.status} ${res.statusText}`, res.status, message);
+    }
+}
+
 export async function updateCategory(
     id: number,
     payload: { label?: string; parentId?: number | null }
@@ -897,7 +1182,15 @@ export async function updateComment(id: number, content: string, userId?: number
 
 export async function deleteComment(id: number): Promise<void> {
     const url = new URL(`/api/comments/${id}`, API_BASE);
-    await fetchJson<void>(url.toString(), addAuthHeader({
+    const res = await fetch(url.toString(), addAuthHeader({
         method: "DELETE",
     }));
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
 }

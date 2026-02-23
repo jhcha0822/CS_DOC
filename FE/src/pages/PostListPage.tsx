@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, createSearchParams, useSearchParams } from "react-router-dom";
 import { fetchCategories, fetchPosts, type CategoryItem, type PostListItem, type SearchIn } from "../lib/api";
 import { labelOfApiCategory } from "../lib/categories";
-import { logout, getCurrentUser } from "../lib/auth";
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20] as const;
 
@@ -38,31 +37,6 @@ export default function PostListPage() {
                 setCategoriesLoading(false);
             });
     }, []);
-
-    const sortedCategories = useMemo(() => {
-        return [...categories].sort((a, b) => {
-            if (a.depth !== b.depth) return a.depth - b.depth;
-            if (a.depth === 0) return a.sortOrder - b.sortOrder;
-            if (a.parentId !== b.parentId) {
-                const aParent = categories.find((c) => c.id === a.parentId);
-                const bParent = categories.find((c) => c.id === b.parentId);
-                if (aParent && bParent) {
-                    const parentOrder = aParent.sortOrder - bParent.sortOrder;
-                    if (parentOrder !== 0) return parentOrder;
-                }
-                return (a.parentId ?? 0) - (b.parentId ?? 0);
-            }
-            return a.sortOrder - b.sortOrder;
-        });
-    }, [categories]);
-
-    const topLevelCategories = useMemo(() => {
-        return sortedCategories.filter((c) => c.depth === 0);
-    }, [sortedCategories]);
-
-    const getChildrenOf = useCallback((parentId: number) => {
-        return sortedCategories.filter((c) => c.parentId === parentId);
-    }, [sortedCategories]);
 
     const currentCategory = useMemo(() => {
         if (!categoryId) return null;
@@ -146,17 +120,6 @@ export default function PostListPage() {
             const next = new URLSearchParams(sp);
             if (size === 10) next.delete("size");
             else next.set("size", String(size));
-            next.delete("page");
-            setSp(next, { replace: true });
-        },
-        [sp, setSp]
-    );
-
-    const setCat = useCallback(
-        (categoryId: number | null) => {
-            const next = new URLSearchParams(sp);
-            if (categoryId != null) next.set("cat", String(categoryId));
-            else next.delete("cat");
             next.delete("page");
             setSp(next, { replace: true });
         },
@@ -254,35 +217,16 @@ export default function PostListPage() {
                     <div style={{ fontSize: 26, fontWeight: 900 }}>{categoriesLoading ? "불러오는 중..." : pageTitle}</div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ fontSize: 14, color: "var(--app-text)" }}>
-                        현재 로그인한 계정: {getCurrentUser()?.name || ""}
-                    </span>
-                    <button
-                        type="button"
-                        onClick={logout}
-                        style={{
-                            padding: "10px 12px",
-                            borderRadius: 10,
-                            border: "1px solid #444",
-                            color: "#111",
-                            background: "#fff",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            fontSize: 14,
-                        }}
-                    >
-                        로그아웃
-                    </button>
                     <Link
                         to={`/posts/new?${createSearchParams(listSearchParams).toString()}`}
                         style={{
                             padding: "10px 12px",
-                            borderRadius: 10,
-                            border: "1px solid #444",
+                            borderRadius: 6,
+                            border: "none",
                             textDecoration: "none",
                             color: "#fff",
-                            background: "#2563eb",
-                            fontWeight: 600,
+                            background: "#3B82F6",
+                            fontWeight: 500,
                             fontSize: 14,
                         }}
                     >
@@ -308,11 +252,11 @@ export default function PostListPage() {
                     style={{
                         padding: "10px 12px",
                         paddingRight: 28,
-                        borderRadius: 10,
-                        border: "1px solid #444",
+                        borderRadius: 6,
+                        border: "1px solid #e5e7eb",
                         background: "#fff",
-                        color: "#111",
-                        fontWeight: 600,
+                        color: "#374151",
+                        fontWeight: 500,
                         cursor: "pointer",
                         outline: "none",
                     }}
@@ -334,10 +278,10 @@ export default function PostListPage() {
                         flex: 1,
                         minWidth: 0,
                         padding: "10px 12px",
-                        borderRadius: 10,
-                        border: "1px solid #444",
-                        background: "#f5f5f5",
-                        color: "#111",
+                        borderRadius: 6,
+                        border: "1px solid #e5e7eb",
+                        background: "#fff",
+                        color: "#374151",
                         outline: "none",
                     }}
                 />
@@ -345,11 +289,11 @@ export default function PostListPage() {
                     type="submit"
                     style={{
                         padding: "10px 12px",
-                        borderRadius: 10,
-                        border: "1px solid #444",
-                        background: "#fff",
-                        color: "#111",
-                        fontWeight: 800,
+                        borderRadius: 6,
+                        border: "none",
+                        background: "#f3f4f6",
+                        color: "#374151",
+                        fontWeight: 500,
                         cursor: "pointer",
                     }}
                 >
@@ -360,11 +304,11 @@ export default function PostListPage() {
                     onClick={onReset}
                     style={{
                         padding: "10px 12px",
-                        borderRadius: 10,
-                        border: "1px solid #444",
-                        background: "#fff",
-                        color: "#111",
-                        fontWeight: 800,
+                        borderRadius: 6,
+                        border: "none",
+                        background: "#f3f4f6",
+                        color: "#374151",
+                        fontWeight: 500,
                         cursor: "pointer",
                     }}
                 >
@@ -387,16 +331,16 @@ export default function PostListPage() {
                 </div>
             )}
             {!loading && !error && (
-                <div style={{ marginTop: 14, border: "1px solid #444", borderRadius: 8, overflow: "hidden" }}>
+                <div style={{ marginTop: 14, border: "1px solid #e5e7eb", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
                         <thead>
-                            <tr style={{ borderBottom: "1px solid #444", background: "#f5f5f5" }}>
-                                <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700 }}>카테고리</th>
-                                <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700 }}>제목</th>
-                                <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700 }}>작성일</th>
-                                <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 700 }}>조회</th>
-                                <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 700 }}>첨부</th>
-                                <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 700 }}>댓글</th>
+                            <tr style={{ borderBottom: "1px solid #d1d5db", background: "#f3f4f6" }}>
+                                <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 600, color: "#374151" }}>카테고리</th>
+                                <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 600, color: "#374151" }}>제목</th>
+                                <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 600, color: "#374151" }}>작성일</th>
+                                <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#374151" }}>조회</th>
+                                <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#374151" }}>첨부</th>
+                                <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#374151" }}>댓글</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -407,16 +351,17 @@ export default function PostListPage() {
                                     </td>
                                 </tr>
                             ) : (
-                                items.map((post, idx) => {
+                                items.map((post) => {
                                     const detailParams = { ...listSearchParams, from: "list" };
-                                    const detailUrl = `/posts/${post.id}?${createSearchParams(detailParams).toString()}`;
+                                    const basePath = post.postKind === "ASSIGNMENT" ? `/posts/${post.id}/assignment` : `/posts/${post.id}`;
+                                    const detailUrl = `${basePath}?${createSearchParams(detailParams).toString()}`;
                                     const isNotice = post.isNotice === true;
                                     return (
                                         <tr
                                             key={post.id}
                                             style={{
-                                                borderBottom: "1px solid #ddd",
-                                                background: isNotice ? "#fee2e2" : (idx % 2 === 0 ? "#fff" : "#fafafa"),
+                                                borderBottom: "1px solid #e5e7eb",
+                                                background: isNotice ? "#fee2e2" : "#fff",
                                                 fontWeight: isNotice ? 700 : 400,
                                             }}
                                         >
@@ -472,7 +417,13 @@ export default function PostListPage() {
                                                                     parsed = [trimmed];
                                                                 }
                                                             }
-                                                            if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(url => url && url.trim() !== "")) {
+                                                            const hasAttachment = Array.isArray(parsed) && parsed.length > 0 && parsed.some((item: unknown) => {
+                                                                if (item == null) return false;
+                                                                if (typeof item === "string") return item.trim() !== "";
+                                                                if (typeof item === "object" && item !== null && "url" in item) return true;
+                                                                return false;
+                                                            });
+                                                            if (hasAttachment) {
                                                                 return <span style={{ fontSize: 16 }}>📎</span>;
                                                             }
                                                         }
@@ -514,9 +465,10 @@ export default function PostListPage() {
                         disabled={pageFromUrl <= 1}
                         style={{
                             padding: "8px 12px",
-                            border: "1px solid #444",
+                            border: "none",
                             borderRadius: 6,
-                            background: "#fff",
+                            background: "#f3f4f6",
+                            color: "#374151",
                             cursor: pageFromUrl <= 1 ? "not-allowed" : "pointer",
                             opacity: pageFromUrl <= 1 ? 0.6 : 1,
                         }}
@@ -530,10 +482,10 @@ export default function PostListPage() {
                             onClick={() => setPage(n)}
                             style={{
                                 padding: "8px 12px",
-                                border: "1px solid #444",
+                                border: "none",
                                 borderRadius: 6,
-                                background: n === pageFromUrl ? "#2563eb" : "#fff",
-                                color: n === pageFromUrl ? "#fff" : "#111",
+                                background: n === pageFromUrl ? "#3B82F6" : "#f3f4f6",
+                                color: n === pageFromUrl ? "#fff" : "#374151",
                                 cursor: "pointer",
                             }}
                         >
@@ -546,9 +498,10 @@ export default function PostListPage() {
                         disabled={pageFromUrl >= totalPages}
                         style={{
                             padding: "8px 12px",
-                            border: "1px solid #444",
+                            border: "none",
                             borderRadius: 6,
-                            background: "#fff",
+                            background: "#f3f4f6",
+                            color: "#374151",
                             cursor: pageFromUrl >= totalPages ? "not-allowed" : "pointer",
                             opacity: pageFromUrl >= totalPages ? 0.6 : 1,
                         }}

@@ -10,13 +10,14 @@ import {
     updateContentByUpload,
     uploadImage,
     ApiError,
+    type AssignmentTaskItemInput,
     type CategoryItem,
 } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
 import MDEditor from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
 
-/** 게시글 작성/수정 시 선택 가능한 카테고리 = 전체 하위 카테고리 (depth !== 0) + 공지사항 카테고리. 왼쪽 사이드바와 동일한 순서로 정렬 */
+/** 게시글 작성/수정 시 사용할 전체 카테고리. 드롭다운 그룹화용으로 전체 목록 필요. 왼쪽 사이드바와 동일한 순서로 정렬 */
 function useEditableCategories(): CategoryItem[] {
     const [categories, setCategories] = useState<CategoryItem[]>([]);
     useEffect(() => {
@@ -25,57 +26,50 @@ function useEditableCategories(): CategoryItem[] {
             .catch(() => setCategories([]));
     }, []);
     return useMemo(() => {
-        // 왼쪽 사이드바와 동일한 정렬 로직 적용
-        const sortedCategories = [...categories].sort((a, b) => {
+        const sorted = [...categories].sort((a, b) => {
             if (a.depth !== b.depth) return a.depth - b.depth;
             if (a.depth === 0) return a.sortOrder - b.sortOrder;
             if (a.parentId !== b.parentId) {
                 const aParent = categories.find((c) => c.id === a.parentId);
                 const bParent = categories.find((c) => c.id === b.parentId);
                 if (aParent && bParent) {
-                    const parentOrder = aParent.sortOrder - bParent.sortOrder;
-                    if (parentOrder !== 0) return parentOrder;
+                    const o = aParent.sortOrder - bParent.sortOrder;
+                    if (o !== 0) return o;
                 }
                 return (a.parentId ?? 0) - (b.parentId ?? 0);
             }
             return a.sortOrder - b.sortOrder;
         });
-
-        const noticeCategory = sortedCategories.find(c => c.label === "공지사항" || c.code === "CAT_NOTICE");
-        const subCategories = sortedCategories.filter((c) => c.depth !== 0);
-        
-        // 공지사항 카테고리가 있으면 맨 앞에 추가
-        if (noticeCategory) {
-            return [noticeCategory, ...subCategories];
-        }
-        return subCategories;
+        return sorted;
     }, [categories]);
 }
 
-/** 드롭다운 렌더링용: 카테고리 목록을 상위 카테고리별로 그룹화하고 구분선 추가 */
-function useCategoryOptionsForDropdown(categories: CategoryItem[]): Array<{ type: 'category', category: CategoryItem } | { type: 'separator' }> {
+/** 드롭다운 렌더링용: 상위(라벨, 비선택) + 들여쓰기된 하위(선택 가능). 예: "신입 교육 자료" / "    업무시스템" */
+type CategoryOptionItem =
+    | { type: 'label'; label: string }
+    | { type: 'category'; category: CategoryItem; indent: boolean };
+
+const isNoticeCategory = (c: CategoryItem) => c.label === "공지사항" || c.code === "CAT_NOTICE";
+
+function useCategoryOptionsForDropdown(categories: CategoryItem[]): CategoryOptionItem[] {
     return useMemo(() => {
-        const result: Array<{ type: 'category', category: CategoryItem } | { type: 'separator' }> = [];
-        let lastParentId: number | null | undefined = undefined;
-        
-        for (let i = 0; i < categories.length; i++) {
-            const category = categories[i];
-            const currentParentId = category.parentId;
-            const isNotice = category.label === "공지사항" || category.code === "CAT_NOTICE";
-            
-            // 공지사항 다음 항목이면 구분선 추가
-            if (i > 0 && categories[i - 1] && (categories[i - 1].label === "공지사항" || categories[i - 1].code === "CAT_NOTICE")) {
-                result.push({ type: 'separator' });
+        const result: CategoryOptionItem[] = [];
+        const topLevel = categories.filter((c) => c.depth === 0).sort((a, b) => a.sortOrder - b.sortOrder);
+        const getChildren = (parentId: number) =>
+            categories.filter((c) => c.parentId === parentId).sort((a, b) => a.sortOrder - b.sortOrder);
+
+        for (const parent of topLevel) {
+            const children = getChildren(parent.id);
+            if (!isNoticeCategory(parent)) {
+                result.push({ type: 'label', label: parent.label });
             }
-            // 상위 카테고리가 변경되면 구분선 추가 (공지사항 다음이 아닌 경우만)
-            else if (lastParentId !== undefined && currentParentId !== lastParentId) {
-                result.push({ type: 'separator' });
+            if (isNoticeCategory(parent)) {
+                result.push({ type: 'category', category: parent, indent: false });
             }
-            
-            result.push({ type: 'category', category });
-            lastParentId = currentParentId;
+            for (const child of children) {
+                result.push({ type: 'category', category: child, indent: true });
+            }
         }
-        
         return result;
     }, [categories]);
 }
@@ -98,20 +92,54 @@ export default function PostEditorPage() {
         return p;
     }, [catParam, qParam]);
 
-    const editableCategories = useEditableCategories();
-    const categoryOptions = useCategoryOptionsForDropdown(editableCategories);
+    const allCategories = useEditableCategories();
+    const categoryOptions = useCategoryOptionsForDropdown(allCategories);
+    /** 선택 가능한 카테고리 = 공지사항 + 모든 하위(depth 1). ID 매칭용 */
+    const editableCategories = useMemo(() => {
+        const notice = allCategories.find((c) => c.label === "공지사항" || c.code === "CAT_NOTICE");
+        const subs = allCategories.filter((c) => c.depth !== 0);
+        return notice ? [notice, ...subs] : subs;
+    }, [allCategories]);
     /** 드롭다운 선택용. ID로 두어 모든 하위 카테고리를 개별 선택 가능하게 함 */
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
     const [isNotice, setIsNotice] = useState<boolean>(false);
-    
+
+    /** 선택한 카테고리 (실습이면 과제로 생성) */
+    const selectedCategory = useMemo(
+        () => (selectedCategoryId != null ? editableCategories.find((c) => c.id === selectedCategoryId) ?? null : null),
+        [selectedCategoryId, editableCategories]
+    );
+    const isAssignmentCategory = selectedCategory?.code === "CAT_TRAINING";
+
+    /** 수정 시 로드된 글이 과제(ASSIGNMENT)인지. 과제 전용 폼 표시 여부에 사용 */
+    const [postKindFromPost, setPostKindFromPost] = useState<"DOC" | "ASSIGNMENT" | null>(null);
+    /** 과제 총 배점 (세부 실습 배점 합 = 100) */
+    const [maxScore, setMaxScore] = useState<number>(100);
+    /** 세부 실습 목록 (내용 MD + 배점, 합 = 100) */
+    const [assignmentTasks, setAssignmentTasks] = useState<AssignmentTaskItemInput[]>([]);
+
+    /** 과제 전용 등록/수정 폼 표시 여부 */
+    const isAssignmentForm = (!isEdit && isAssignmentCategory) || (isEdit && postKindFromPost === "ASSIGNMENT");
+
     // 공지사항 카테고리 찾기 (editableCategories에 이미 포함되어 있음)
     const noticeCategory = useMemo(() => {
         return editableCategories.find(c => c.label === "공지사항" || c.code === "CAT_NOTICE");
     }, [editableCategories]);
 
-    // 신규 작성 시 카테고리 자동 선택 제거 - 사용자가 반드시 선택하도록 함
+    // 신규 작성 시 URL의 cat 파라미터로 카테고리 자동 선택 (실습 등록: /posts/new?cat=1 등)
+    const hasAppliedCatParam = useRef(false);
+    useEffect(() => {
+        if (!isEdit && catParam && editableCategories.length > 0 && !hasAppliedCatParam.current) {
+            const catId = parseInt(catParam, 10);
+            if (!Number.isNaN(catId) && editableCategories.some((c) => c.id === catId)) {
+                setSelectedCategoryId(catId);
+                hasAppliedCatParam.current = true;
+            }
+        }
+    }, [isEdit, catParam, editableCategories]);
 
     const [title, setTitle] = useState("");
+    const [summaryTitle, setSummaryTitle] = useState<string>("");
     const [markdown, setMarkdown] = useState("");
 
     const [loading, setLoading] = useState(isEdit);
@@ -126,6 +154,9 @@ export default function PostEditorPage() {
     const editorRef = useRef<{ textarea?: HTMLTextAreaElement } | null>(null);
     const imageInputRef = useRef<HTMLInputElement | null>(null);
     const pendingReplaceRef = useRef<{ runUpdate: (images: File[]) => Promise<void> } | null>(null);
+    const [showLocalImageModal, setShowLocalImageModal] = useState(false);
+    /** 확인 클릭 시 같은 클릭 핸들러에서 실행할 콜백(파일 input 열기). 브라우저 제스처 제한 회피용 */
+    const pendingLocalImageOpenRef = useRef<(() => void) | null>(null);
 
     const insertImageUrl = useCallback(
         (url: string, start?: number, end?: number) => {
@@ -143,6 +174,7 @@ export default function PostEditorPage() {
         []
     );
 
+
     const backTo = useMemo(
         () =>
             isEdit
@@ -159,38 +191,50 @@ export default function PostEditorPage() {
         let cancelled = false;
         setLoading(true);
         setError(null);
-        Promise.all([fetchPost(postId), fetchPostContent(postId).catch(() => null)])
-            .then(([post, contentRes]) => {
+        setPostKindFromPost(null);
+        fetchPost(postId)
+            .then((post) => {
                 if (cancelled) return;
                 setTitle(post.title);
+                setSummaryTitle(post.summaryTitle ?? "");
                 setIsNotice(post.isNotice === true);
-                // categoryId 사용
                 if (post.categoryId != null) {
-                    // editableCategories에서 찾기 (공지사항 포함)
                     const found = editableCategories.find((c) => c.id === post.categoryId);
-                    if (found) {
-                        setSelectedCategoryId(post.categoryId);
-                    }
+                    if (found) setSelectedCategoryId(post.categoryId);
                 }
-                setMarkdown(contentRes?.markdown ?? post.contentMd ?? "");
+                setPostKindFromPost(post.postKind === "ASSIGNMENT" || post.postKind === "DOC" ? post.postKind : null);
+                if (post.postKind === "ASSIGNMENT") {
+                    setMaxScore(post.maxScore ?? 100);
+                    const tasks = post.assignmentTasks ?? [];
+                    setAssignmentTasks(
+                        tasks.map((t, i) => ({
+                            taskId: t.taskId,
+                            title: t.title || `세부 실습 ${i + 1}`,
+                            descriptionMarkdown: t.descriptionMarkdown ?? "",
+                            sortOrder: i,
+                            maxScore: t.maxScore ?? 0,
+                        }))
+                    );
+                }
+                return fetchPostContent(postId).then((contentRes) => {
+                    if (cancelled) return;
+                    setMarkdown(contentRes?.markdown ?? post.contentMd ?? "");
+                }).catch(() => {
+                    if (!cancelled) setMarkdown(post.contentMd ?? "");
+                });
             })
             .catch((e) => {
                 if (cancelled) return;
                 const msg =
-                    e instanceof ApiError
-                        ? e.message
-                        : e instanceof Error
-                          ? e.message
-                          : "게시글을 불러오지 못했습니다.";
+                    e instanceof ApiError ? e.message : e instanceof Error ? e.message : "게시글을 불러오지 못했습니다.";
                 setError(msg);
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
             });
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [isEdit, postId, editableCategories]);
+
 
     const extractTitleFromMd = (md: string): string => {
         const s = md.trim();
@@ -232,9 +276,8 @@ export default function PostEditorPage() {
                 setSelectedFile(file);
                 setError(null);
                 if (hasLocalImageInMd(text)) {
-                    if (window.confirm("Markdown 내 로컬 PC의 이미지가 있습니다. 같이 첨부해주세요.\n\n확인을 누르면 파일 선택 창이 열립니다.")) {
-                        setTimeout(() => imageInputRef.current?.click(), 100);
-                    }
+                    pendingLocalImageOpenRef.current = () => imageInputRef.current?.click();
+                    setShowLocalImageModal(true);
                 }
             };
             reader.readAsText(file, "UTF-8");
@@ -276,11 +319,13 @@ export default function PostEditorPage() {
                 title: title.trim() || undefined,
                 categoryId: selectedCategoryId,
                 isNotice: isNotice,
+                postKind: isAssignmentCategory ? "ASSIGNMENT" : undefined,
                 images: selectedImages.length > 0 ? selectedImages : undefined,
                 attachments: selectedAttachments.length > 0 ? selectedAttachments : undefined,
                 userId: currentUser?.id,
             });
-            navigate(`/posts/${created.id}?${createSearchParams(searchParams).toString()}`);
+            const targetPath = isAssignmentCategory ? `/posts/${created.id}/assignment` : `/posts/${created.id}`;
+            navigate(`${targetPath}?${createSearchParams(searchParams).toString()}`);
         } catch (e) {
             const msg =
                 e instanceof ApiError
@@ -292,7 +337,7 @@ export default function PostEditorPage() {
         } finally {
             setUploading(false);
         }
-    }, [selectedFile, title, selectedCategoryId, isNotice, selectedImages, selectedAttachments, searchParams, navigate]);
+    }, [selectedFile, title, selectedCategoryId, isNotice, isAssignmentCategory, selectedImages, selectedAttachments, searchParams, navigate]);
 
     const [imageUploading, setImageUploading] = useState(false);
 
@@ -334,6 +379,45 @@ export default function PostEditorPage() {
         [insertImageUrl, markdown.length]
     );
 
+    /** 세부 실습 에디터에서 이미지 붙여넣기 시 해당 task의 descriptionMarkdown에만 반영 (개요로 들어가지 않도록) */
+    const handleTaskEditorPaste = useCallback(
+        (taskIndex: number) => async (e: React.ClipboardEvent) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.type.startsWith("image/")) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    if (!file) return;
+                    setImageUploading(true);
+                    try {
+                        const { url } = await uploadImage(file);
+                        const imageMd = `\n![](${url})\n\n`;
+                        setAssignmentTasks((prev) =>
+                            prev.map((t, i) =>
+                                i === taskIndex
+                                    ? { ...t, descriptionMarkdown: (t.descriptionMarkdown ?? "") + imageMd }
+                                    : t
+                            )
+                        );
+                    } catch (err) {
+                        const msg =
+                            err instanceof ApiError
+                                ? err.message
+                                : err instanceof Error
+                                  ? err.message
+                                  : "이미지 업로드에 실패했습니다.";
+                        setError(msg);
+                    } finally {
+                        setImageUploading(false);
+                    }
+                    return;
+                }
+            }
+        },
+        [uploadImage]
+    );
+
     const handleReplaceContentByUpload = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
             const file = e.target.files?.[0];
@@ -367,12 +451,9 @@ export default function PostEditorPage() {
                     e.target.value = "";
                 };
                 if (hasLocalImageInMd(text)) {
-                    if (window.confirm("Markdown 내 로컬 PC의 이미지가 있습니다. 같이 첨부해주세요.\n\n확인을 누르면 파일 선택 창이 열립니다.")) {
-                        pendingReplaceRef.current = { runUpdate };
-                        setTimeout(() => imageInputRef.current?.click(), 100);
-                    } else {
-                        e.target.value = "";
-                    }
+                    pendingReplaceRef.current = { runUpdate };
+                    pendingLocalImageOpenRef.current = () => imageInputRef.current?.click();
+                    setShowLocalImageModal(true);
                 } else {
                     await runUpdate(selectedImages);
                 }
@@ -388,17 +469,58 @@ export default function PostEditorPage() {
             setError("제목을 입력해 주세요.");
             return;
         }
-        
-        // categoryId는 필수
         if (!selectedCategoryId || selectedCategoryId <= 0) {
             setError("카테고리를 선택해 주세요.");
             return;
         }
-        
+
+        if (isAssignmentForm) {
+            if (maxScore < 1 || maxScore > 1000) {
+                setError("과제 배점은 1~1000 사이로 입력해 주세요.");
+                return;
+            }
+            const taskSum = assignmentTasks.reduce((s, t) => s + (t.maxScore ?? 0), 0);
+            if (assignmentTasks.length > 0 && taskSum !== maxScore) {
+                setError(`세부 실습 배점 합이 ${maxScore}점이어야 합니다. 현재 합: ${taskSum}점`);
+                return;
+            }
+        }
+
         setSaving(true);
         setError(null);
         try {
             const currentUser = getCurrentUser();
+            if (isAssignmentForm && !isEdit) {
+                const created = await createPost({
+                    title: trimmedTitle,
+                    summaryTitle: null,
+                    categoryId: selectedCategoryId,
+                    contentMd: markdown.trim() || "\n",
+                    isNotice: isNotice,
+                    postKind: "ASSIGNMENT",
+                    maxScore: maxScore,
+                    tasks: assignmentTasks.length > 0 ? assignmentTasks.map((t, i) => ({ ...t, sortOrder: i })) : undefined,
+                    attachments: selectedAttachments.length > 0 ? selectedAttachments : undefined,
+                    userId: currentUser?.id,
+                });
+                navigate(`/posts/${created.id}/assignment?${createSearchParams(searchParams).toString()}`);
+                return;
+            }
+            if (isAssignmentForm && isEdit) {
+                await patchPost(postId, {
+                    title: trimmedTitle,
+                    summaryTitle: null,
+                    categoryId: selectedCategoryId,
+                    markdown: markdown || undefined,
+                    isNotice: isNotice,
+                    maxScore: maxScore,
+                    tasks: assignmentTasks.map((t, i) => ({ ...t, sortOrder: i })),
+                    attachments: selectedAttachments.length > 0 ? selectedAttachments : undefined,
+                    userId: currentUser?.id ?? undefined,
+                });
+                navigate(`/posts/${postId}/assignment?${createSearchParams(searchParams).toString()}`);
+                return;
+            }
             if (isEdit) {
                 await patchPost(postId, {
                     title: trimmedTitle,
@@ -410,12 +532,12 @@ export default function PostEditorPage() {
                 });
                 navigate(`/posts/${postId}?${createSearchParams(searchParams).toString()}`);
             } else {
-                const currentUser = getCurrentUser();
                 const created = await createPost({
                     title: trimmedTitle,
                     categoryId: selectedCategoryId,
                     contentMd: markdown.trim() || "\n",
                     isNotice: isNotice,
+                    postKind: undefined,
                     attachments: selectedAttachments.length > 0 ? selectedAttachments : undefined,
                     userId: currentUser?.id,
                 });
@@ -423,16 +545,12 @@ export default function PostEditorPage() {
             }
         } catch (e) {
             const msg =
-                e instanceof ApiError
-                    ? e.message
-                    : e instanceof Error
-                      ? e.message
-                      : "저장에 실패했습니다.";
+                e instanceof ApiError ? e.message : e instanceof Error ? e.message : "저장에 실패했습니다.";
             setError(msg);
         } finally {
             setSaving(false);
         }
-    }, [isEdit, postId, title, markdown, selectedCategoryId, isNotice, selectedAttachments, searchParams, navigate]);
+    }, [isEdit, isAssignmentForm, postId, title, summaryTitle, markdown, selectedCategoryId, isNotice, maxScore, assignmentTasks, selectedAttachments, searchParams, navigate]);
 
     if (loading) {
         return (
@@ -444,23 +562,205 @@ export default function PostEditorPage() {
 
     return (
         <div style={{ maxWidth: "100%", minWidth: 0, boxSizing: "border-box" }}>
+            {showLocalImageModal && (
+                <div
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(0,0,0,0.5)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 10000,
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            pendingLocalImageOpenRef.current = null;
+                            pendingReplaceRef.current = null;
+                            setShowLocalImageModal(false);
+                        }
+                    }}
+                >
+                    <div
+                        style={{
+                            background: "#fff",
+                            padding: 24,
+                            borderRadius: 12,
+                            maxWidth: 400,
+                            boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: "#111" }}>
+                            Markdown 내 로컬 PC의 이미지가 있습니다. 같이 첨부해주세요.
+                        </p>
+                        <p style={{ margin: "12px 0 0", fontSize: 13, color: "#666" }}>
+                            확인을 누르면 파일 선택 창이 열립니다.
+                        </p>
+                        <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    pendingLocalImageOpenRef.current = null;
+                                    pendingReplaceRef.current = null;
+                                    setShowLocalImageModal(false);
+                                }}
+                                style={{
+                                    padding: "8px 16px",
+                                    borderRadius: 6,
+                                    border: "1px solid #d1d5db",
+                                    background: "#f3f4f6",
+                                    color: "#374151",
+                                    fontSize: 14,
+                                    fontWeight: 500,
+                                    cursor: "pointer",
+                                }}
+                            >
+                                취소
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const openFile = pendingLocalImageOpenRef.current;
+                                    pendingLocalImageOpenRef.current = null;
+                                    openFile?.();
+                                    setShowLocalImageModal(false);
+                                }}
+                                style={{
+                                    padding: "8px 16px",
+                                    borderRadius: 6,
+                                    border: "none",
+                                    background: "#3B82F6",
+                                    color: "#fff",
+                                    fontSize: 14,
+                                    fontWeight: 500,
+                                    cursor: "pointer",
+                                }}
+                            >
+                                확인
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end" }}>
                 <div>
                     <div style={{ fontSize: 22, fontWeight: 800 }}>
-                        {isEdit ? "게시글 수정" : "게시글 등록"}
+                        {isAssignmentForm ? (isEdit ? "과제 수정" : "과제 등록") : isEdit ? "게시글 수정" : "게시글 등록"}
                     </div>
                     <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>
-                        {isEdit ? (
-                            <>
-                                id=<b>{id}</b>
-                            </>
+                        {isAssignmentForm ? (
+                            <>실습명, 실습 개요, 세부 실습, 배점을 입력하세요.</>
+                        ) : isEdit ? (
+                            <>id=<b>{id}</b></>
                         ) : (
                             <>카테고리를 선택한 뒤 제목·본문을 입력하세요.</>
                         )}
                     </div>
                 </div>
 
-                <div className="header-actions" style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+                <div className="header-actions" style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" }}>
+                    {!isEdit && (
+                        <>
+                            <label
+                                style={{
+                                    minHeight: 42,
+                                    padding: "10px 14px",
+                                    borderRadius: 6,
+                                    border: "none",
+                                    background: "#f3f4f6",
+                                    color: "#374151",
+                                    fontWeight: 500,
+                                    fontSize: 14,
+                                    cursor: "pointer",
+                                    boxSizing: "border-box",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                }}
+                            >
+                                .md 파일로 등록
+                                <input
+                                    type="file"
+                                    accept=".md"
+                                    onChange={handleFileSelect}
+                                    style={{ display: "none" }}
+                                />
+                            </label>
+                            <input
+                                ref={imageInputRef}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={handleImageSelect}
+                                style={{ display: "none" }}
+                            />
+                            {selectedFile && (
+                                <button
+                                    type="button"
+                                    onClick={handleCreateByUpload}
+                                    disabled={uploading}
+                                    style={{
+                                        minHeight: 42,
+                                        padding: "10px 14px",
+                                        borderRadius: 6,
+                                        border: "none",
+                                        background: uploading ? "#9ca3af" : "#3B82F6",
+                                        color: "#fff",
+                                        fontWeight: 500,
+                                        fontSize: 14,
+                                        cursor: uploading ? "not-allowed" : "pointer",
+                                        opacity: uploading ? 0.7 : 1,
+                                        boxSizing: "border-box",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                    }}
+                                >
+                                    {uploading ? "등록 중..." : "이 파일로 등록"}
+                                </button>
+                            )}
+                        </>
+                    )}
+                    {isEdit && (
+                        <>
+                            <label
+                                style={{
+                                    minHeight: 42,
+                                    padding: "10px 14px",
+                                    borderRadius: 6,
+                                    border: "none",
+                                    background: uploading ? "#e5e7eb" : "#f3f4f6",
+                                    color: "#374151",
+                                    fontWeight: 500,
+                                    fontSize: 14,
+                                    cursor: uploading ? "not-allowed" : "pointer",
+                                    boxSizing: "border-box",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                }}
+                            >
+                                {uploading ? "교체 중..." : "본문을 .md 파일로 교체"}
+                                <input
+                                    type="file"
+                                    accept=".md"
+                                    onChange={handleReplaceContentByUpload}
+                                    style={{ display: "none" }}
+                                    disabled={uploading}
+                                />
+                            </label>
+                            <input
+                                ref={imageInputRef}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={handleImageSelect}
+                                style={{ display: "none" }}
+                                disabled={uploading}
+                            />
+                        </>
+                    )}
                     <button
                         type="button"
                         onClick={handleSave}
@@ -469,11 +769,12 @@ export default function PostEditorPage() {
                             width: 90,
                             minHeight: 42,
                             padding: "10px 14px",
-                            borderRadius: 10,
-                            border: "1px solid #444",
-                            background: "#2563eb",
+                            borderRadius: 6,
+                            border: "none",
+                            background: "#3B82F6",
                             color: "#fff",
-                            fontWeight: 800,
+                            fontWeight: 500,
+                            fontSize: 14,
                             cursor: saving || uploading ? "not-allowed" : "pointer",
                             opacity: saving || uploading ? 0.7 : 1,
                             boxSizing: "border-box",
@@ -490,12 +791,13 @@ export default function PostEditorPage() {
                             width: 90,
                             minHeight: 42,
                             padding: "10px 14px",
-                            borderRadius: 10,
-                            border: "1px solid #444",
+                            borderRadius: 6,
+                            border: "none",
                             textDecoration: "none",
-                            color: "#111",
-                            background: "#fff",
-                            fontWeight: 800,
+                            color: "#374151",
+                            background: "#f3f4f6",
+                            fontWeight: 500,
+                            fontSize: 14,
                             boxSizing: "border-box",
                             display: "inline-flex",
                             alignItems: "center",
@@ -556,16 +858,16 @@ export default function PostEditorPage() {
                         >
                             <option value="">카테고리를 선택하세요</option>
                             {categoryOptions.map((item, idx) => {
-                                if (item.type === 'separator') {
+                                if (item.type === 'label') {
                                     return (
-                                        <option key={`sep-${idx}`} disabled style={{ background: '#f0f0f0' }}>
-                                            ================
+                                        <option key={`label-${idx}`} disabled style={{ fontWeight: 600, background: "#f5f5f5" }}>
+                                            {item.label}
                                         </option>
                                     );
                                 }
                                 return (
                                     <option key={item.category.id} value={item.category.id}>
-                                        {item.category.label}
+                                        {item.indent ? "\u00A0\u00A0\u00A0\u00A0" + item.category.label : item.category.label}
                                     </option>
                                 );
                             })}
@@ -597,12 +899,12 @@ export default function PostEditorPage() {
 
                 <div style={{ maxWidth: "100%", boxSizing: "border-box" }}>
                     <label style={{ display: "block", fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
-                        제목
+                        {isAssignmentForm ? "실습명" : "제목"}
                     </label>
                     <input
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        placeholder="제목"
+                        placeholder={isAssignmentForm ? "실습명" : "제목"}
                         style={{
                             width: "100%",
                             maxWidth: "100%",
@@ -617,6 +919,143 @@ export default function PostEditorPage() {
                     />
                 </div>
 
+                {isAssignmentForm && (
+                    <>
+                        <div>
+                            <label style={{ display: "block", fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
+                                실습 개요
+                            </label>
+                            <div data-color-mode="light" onPaste={handleEditorPaste}>
+                                <MDEditor
+                                    value={markdown}
+                                    onChange={(val) => setMarkdown(val ?? "")}
+                                    height={320}
+                                    minHeight={200}
+                                    preview="live"
+                                    visibleDragbar={true}
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label style={{ display: "block", fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
+                                배점
+                            </label>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={1000}
+                                    value={maxScore}
+                                    onChange={(e) => setMaxScore(Math.max(1, Math.min(1000, Number(e.target.value) || 100)))}
+                                    style={{
+                                        width: 100,
+                                        padding: "8px 10px",
+                                        borderRadius: 8,
+                                        border: "1px solid #444",
+                                    }}
+                                />
+                                <span style={{ fontSize: 12 }}>점 (세부 실습 배점 합)</span>
+                            </div>
+                        </div>
+                        <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, background: "#fafafa" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                <label style={{ fontSize: 13, fontWeight: 600 }}>세부 실습</label>
+                                <span style={{ fontSize: 12, color: assignmentTasks.reduce((s, t) => s + (t.maxScore ?? 0), 0) === maxScore ? "#059669" : "#dc2626" }}>
+                                    배점 합: {assignmentTasks.reduce((s, t) => s + (t.maxScore ?? 0), 0)} / {maxScore}점
+                                </span>
+                            </div>
+                            <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+                                세부 실습별로 내용(MD)과 배점을 입력하세요. 세부 실습 배점 합이 위 배점과 같아야 합니다.
+                            </p>
+                            {assignmentTasks.map((task, idx) => (
+                                <div key={idx} style={{ marginBottom: 16, padding: 12, background: "#fff", borderRadius: 8, border: "1px solid #e5e7eb" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                        <strong style={{ fontSize: 13 }}>세부 실습 {idx + 1}</strong>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                            <label style={{ fontSize: 12 }}>배점</label>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={100}
+                                                value={task.maxScore ?? 0}
+                                                onChange={(e) => {
+                                                    const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                                                    setAssignmentTasks((prev) => prev.map((t, i) => i === idx ? { ...t, maxScore: v } : t));
+                                                }}
+                                                style={{ width: 64, padding: "6px 8px", borderRadius: 6, border: "1px solid #444" }}
+                                            />
+                                            <span style={{ fontSize: 12 }}>점</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAssignmentTasks((prev) => prev.filter((_, i) => i !== idx))}
+                                                style={{ fontSize: 12, padding: "4px 8px", color: "#dc2626", border: "1px solid #dc2626", borderRadius: 6, background: "transparent", cursor: "pointer" }}
+                                            >
+                                                삭제
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div data-color-mode="light" onPaste={handleTaskEditorPaste(idx)}>
+                                        <MDEditor
+                                            value={task.descriptionMarkdown ?? ""}
+                                            onChange={(val) => setAssignmentTasks((prev) => prev.map((t, i) => i === idx ? { ...t, descriptionMarkdown: val ?? "" } : t))}
+                                            height={200}
+                                            minHeight={120}
+                                            preview="live"
+                                            visibleDragbar={true}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                            <button
+                                type="button"
+                                onClick={() => setAssignmentTasks((prev) => [...prev, { title: `세부 실습 ${prev.length + 1}`, descriptionMarkdown: "", sortOrder: prev.length, maxScore: 0 }])}
+                                style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #3B82F6", background: "#eff6ff", color: "#3B82F6", fontWeight: 500, cursor: "pointer", fontSize: 13 }}
+                            >
+                                + 세부 실습 추가
+                            </button>
+                        </div>
+                        <div style={{ maxWidth: "100%", boxSizing: "border-box" }}>
+                            <label style={{ display: "block", fontSize: 12, opacity: 0.8, marginBottom: 4 }}>첨부파일 (선택)</label>
+                            <div
+                                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                                onDragLeave={() => setIsDragging(false)}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    setIsDragging(false);
+                                    setSelectedAttachments((prev) => [...prev, ...Array.from(e.dataTransfer.files)]);
+                                }}
+                                style={{
+                                    minHeight: 80,
+                                    padding: 12,
+                                    borderRadius: 10,
+                                    border: `2px dashed ${isDragging ? "#2563eb" : "#444"}`,
+                                    background: isDragging ? "#e3f2fd" : "#fafafa",
+                                    cursor: "pointer",
+                                }}
+                                onClick={() => {
+                                    const input = document.createElement("input");
+                                    input.type = "file";
+                                    input.multiple = true;
+                                    input.onchange = (e) => setSelectedAttachments((prev) => [...prev, ...Array.from((e.target as HTMLInputElement).files || [])]);
+                                    input.click();
+                                }}
+                            >
+                                {selectedAttachments.length === 0
+                                    ? "파일을 드래그하거나 클릭하여 선택"
+                                    : `${selectedAttachments.length}개 파일 선택됨 · 클릭하여 추가`}
+                                {selectedAttachments.length > 0 && selectedAttachments.map((file, i) => (
+                                    <div key={i} style={{ marginTop: 4, fontSize: 12, display: "flex", justifyContent: "space-between" }}>
+                                        <span>{file.name}</span>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedAttachments((prev) => prev.filter((_, j) => j !== i)); }}>삭제</button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {!isAssignmentForm && (
+                <>
                 <div style={{ maxWidth: "100%", boxSizing: "border-box" }}>
                     <label style={{ display: "block", fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
                         첨부파일
@@ -731,135 +1170,8 @@ export default function PostEditorPage() {
                         />
                     </div>
                 </div>
-
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    {!isEdit && (
-                        <>
-                            <label
-                                className="file-action-label"
-                                style={{
-                                    padding: "10px 12px",
-                                    borderRadius: 10,
-                                    border: "1px solid #444",
-                                    background: "#f5f5f5",
-                                    color: "#111",
-                                    fontWeight: 800,
-                                    cursor: "pointer",
-                                    display: "inline-block",
-                                }}
-                            >
-                                .md 파일 선택
-                                <input
-                                    type="file"
-                                    accept=".md"
-                                    onChange={handleFileSelect}
-                                    style={{ display: "none" }}
-                                />
-                            </label>
-                            <label
-                                className="file-action-label"
-                                style={{
-                                    padding: "10px 12px",
-                                    borderRadius: 10,
-                                    border: "1px solid #444",
-                                    background: "#f5f5f5",
-                                    color: "#111",
-                                    fontWeight: 800,
-                                    cursor: "pointer",
-                                    display: "inline-block",
-                                }}
-                            >
-                                이미지 파일 선택 (선택사항)
-                                <input
-                                    ref={imageInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    onChange={handleImageSelect}
-                                    style={{ display: "none" }}
-                                />
-                            </label>
-                            {selectedImages.length > 0 && (
-                                <span style={{ fontSize: 12, opacity: 0.7 }}>
-                                    {selectedImages.length}개 이미지 선택됨
-                                </span>
-                            )}
-                            {selectedFile && (
-                                <button
-                                    type="button"
-                                    onClick={handleCreateByUpload}
-                                    disabled={uploading}
-                                    style={{
-                                        padding: "10px 12px",
-                                        borderRadius: 10,
-                                        border: "1px solid #444",
-                                        background: "#2563eb",
-                                        color: "#fff",
-                                        fontWeight: 800,
-                                        cursor: uploading ? "not-allowed" : "pointer",
-                                    }}
-                                >
-                                    {uploading ? "등록 중..." : "이 파일로 등록"}
-                                </button>
-                            )}
-                        </>
-                    )}
-                    {isEdit && (
-                        <>
-                            <label
-                                className="file-action-label"
-                                style={{
-                                    padding: "10px 12px",
-                                    borderRadius: 10,
-                                    border: "1px solid #444",
-                                    background: "#f5f5f5",
-                                    color: "#111",
-                                    fontWeight: 800,
-                                    cursor: uploading ? "not-allowed" : "pointer",
-                                    display: "inline-block",
-                                }}
-                            >
-                                {uploading ? "교체 중..." : "본문을 .md 파일로 교체"}
-                                <input
-                                    type="file"
-                                    accept=".md"
-                                    onChange={handleReplaceContentByUpload}
-                                    style={{ display: "none" }}
-                                    disabled={uploading}
-                                />
-                            </label>
-                            <label
-                                className="file-action-label"
-                                style={{
-                                    padding: "10px 12px",
-                                    borderRadius: 10,
-                                    border: "1px solid #444",
-                                    background: "#f5f5f5",
-                                    color: "#111",
-                                    fontWeight: 800,
-                                    cursor: uploading ? "not-allowed" : "pointer",
-                                    display: "inline-block",
-                                }}
-                            >
-                                이미지 파일 선택 (선택사항)
-                                <input
-                                    ref={imageInputRef}
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    onChange={handleImageSelect}
-                                    style={{ display: "none" }}
-                                    disabled={uploading}
-                                />
-                            </label>
-                            {selectedImages.length > 0 && (
-                                <span style={{ fontSize: 12, opacity: 0.7 }}>
-                                    {selectedImages.length}개 이미지 선택됨
-                                </span>
-                            )}
-                        </>
-                    )}
-                </div>
+                </>
+                )}
             </div>
         </div>
     );

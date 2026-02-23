@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, createSearchParams, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { fetchPost, fetchCategories, incrementViewCount, deletePost, getComments, createComment, updateComment, deleteComment, type PostDetail, type CategoryItem, type Comment } from "../lib/api";
 import { ApiError } from "../lib/api";
-import { labelOfApiCategory } from "../lib/categories";
 import { getCurrentUser } from "../lib/auth";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import "@uiw/react-markdown-preview/markdown.css";
@@ -230,9 +229,27 @@ export default function PostDetailPage() {
         return () => {
             cancelled = true;
         };
-    }, [postId, sp]);
+    }, [postId, sp, navigate, listSearchParams]);
 
     const bodyText = post?.contentMd ?? "";
+
+    // 브레드크럼 경로 생성 함수
+    const getBreadcrumbPath = useCallback((categoryId: number | null): string[] => {
+        if (!categoryId) return [];
+        const path: string[] = [];
+        let currentId: number | null = categoryId;
+        
+        while (currentId) {
+            const category = categories.find(c => c.id === currentId);
+            if (!category) break;
+            path.unshift(category.label);
+            currentId = category.parentId;
+        }
+        
+        return path;
+    }, [categories]);
+
+    const breadcrumbPath = post?.categoryId ? getBreadcrumbPath(post.categoryId) : [];
 
     return (
         <div style={{ maxWidth: "100%", minWidth: 0 }}>
@@ -243,14 +260,47 @@ export default function PostDetailPage() {
                     alignItems: "center",
                     gap: 12,
                     flexWrap: "wrap",
+                    minHeight: 42, // 버튼 높이와 맞추기
                 }}
             >
-                <div>
-                    <div style={{ fontSize: 22, fontWeight: 900 }}>게시글 상세</div>
-                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
-                        id=<b>{id}</b>
-                    </div>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    {/* 브레드크럼 */}
+                    {!loading && !error && post && breadcrumbPath.length > 0 && (
+                        <div style={{ marginBottom: 2, fontSize: 13, color: "#6b7280" }}>
+                            {breadcrumbPath.map((label, idx) => (
+                                <span key={idx}>
+                                    {idx > 0 && <span style={{ margin: "0 6px", color: "#9ca3af" }}>&gt;</span>}
+                                    <span style={{ color: idx === breadcrumbPath.length - 1 ? "#6b7280" : "#9ca3af" }}>
+                                        {label}
+                                    </span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    {loading ? (
+                        <div style={{ fontSize: 24, fontWeight: 700 }}>불러오는 중...</div>
+                    ) : error ? (
+                        <div style={{ fontSize: 24, fontWeight: 700 }}>게시글 상세</div>
+                    ) : post ? (
+                        <>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: "#111827", lineHeight: 1.3 }}>{post.title}</div>
+                            {/* 조회수, 버전, 수정자 정보 */}
+                            <div style={{ fontSize: 13, color: "#9ca3af", marginTop: 12, lineHeight: 1.4 }}>
+                                조회수 {post.viewCount ?? 0} . 버전 {post.versionNumber ?? 1} . {post.updatedByName || ""}
+                            </div>
+                        </>
+                    ) : (
+                        <div style={{ fontSize: 24, fontWeight: 700 }}>게시글 상세</div>
+                    )}
                 </div>
+
+                {/* 작성/수정 시각 메타데이터 - 버튼 왼쪽에 배치 */}
+                {!loading && !error && post && (
+                    <div style={{ textAlign: "right", fontSize: 13, color: "#9ca3af", lineHeight: 1.6, marginRight: 12, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                        <div>작성 {formatKST(post.createdAt)}</div>
+                        <div>수정 {formatKST(post.updatedAt)}</div>
+                    </div>
+                )}
 
                 <div className="header-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
                     <button
@@ -260,11 +310,12 @@ export default function PostDetailPage() {
                             width: 90,
                             minHeight: 42,
                             padding: "10px 14px",
-                            borderRadius: 10,
-                            border: "1px solid #dc2626",
+                            borderRadius: 6,
+                            border: "none",
+                            fontSize: 14,
                             color: "#fff",
-                            background: deleting ? "#999" : "#dc2626",
-                            fontWeight: 800,
+                            background: deleting ? "#9ca3af" : "#dc2626",
+                            fontWeight: 500,
                             boxSizing: "border-box",
                             display: "inline-flex",
                             alignItems: "center",
@@ -280,12 +331,13 @@ export default function PostDetailPage() {
                             width: 90,
                             minHeight: 42,
                             padding: "10px 14px",
-                            borderRadius: 10,
-                            border: "1px solid #444",
+                            borderRadius: 6,
+                            border: "none",
                             textDecoration: "none",
+                            fontSize: 14,
                             color: "#fff",
-                            background: "#2563eb",
-                            fontWeight: 800,
+                            background: "#3B82F6",
+                            fontWeight: 500,
                             boxSizing: "border-box",
                             display: "inline-flex",
                             alignItems: "center",
@@ -300,12 +352,13 @@ export default function PostDetailPage() {
                             width: 90,
                             minHeight: 42,
                             padding: "10px 14px",
-                            borderRadius: 10,
-                            border: "1px solid var(--app-btn-secondary-border)",
+                            borderRadius: 6,
+                            border: "none",
                             textDecoration: "none",
-                            color: "var(--app-btn-secondary-text)",
-                            background: "var(--app-btn-secondary-bg)",
-                            fontWeight: 800,
+                            fontSize: 14,
+                            color: "#374151",
+                            background: "#f3f4f6",
+                            fontWeight: 500,
                             boxSizing: "border-box",
                             display: "inline-flex",
                             alignItems: "center",
@@ -321,11 +374,11 @@ export default function PostDetailPage() {
                 className="content-card"
                 style={{
                     marginTop: 16,
-                    padding: 14,
-                    borderRadius: 12,
-                    border: "1px solid var(--app-border)",
-                    background: "var(--app-bg)",
-                    color: "var(--app-text)",
+                    padding: 20,
+                    borderRadius: 6,
+                    border: "1px solid #e5e7eb",
+                    background: "#fff",
+                    color: "#111827",
                     minHeight: 120,
                 }}
             >
@@ -344,30 +397,6 @@ export default function PostDetailPage() {
 
                 {!loading && !error && post && (
                     <div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-                            <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 900, fontSize: 18 }}>{post.title}</div>
-                            </div>
-                        </div>
-                        <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-                            <div style={{ fontSize: 12, opacity: 0.8 }}>
-                                {post.categoryId 
-                                    ? (categories.find(c => c.id === post.categoryId)?.label ?? "기타")
-                                    : labelOfApiCategory(post.category)}
-                            </div>
-                            <div style={{ textAlign: "right", fontSize: 12, opacity: 0.8 }}>
-                                생성 {formatKST(post.createdAt)}<br />
-                                수정 {formatKST(post.updatedAt)}
-                                {post.updatedByName && <span style={{ marginLeft: 6 }}>· {post.updatedByName}</span>}
-                                <br />
-                                <div style={{ marginTop: 4 }}>
-                                    조회 {post.viewCount ?? 0}
-                                </div>
-                            </div>
-                        </div>
-                        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                            id: {post.id}
-                        </div>
 
                         {(() => {
                             try {
@@ -481,11 +510,14 @@ export default function PostDetailPage() {
                             style={{
                                 width: "100%",
                                 padding: "12px",
-                                borderRadius: 8,
-                                border: "1px solid #444",
+                                borderRadius: 6,
+                                border: "1px solid #e5e7eb",
+                                background: "#fff",
                                 fontSize: 14,
                                 fontFamily: "inherit",
                                 resize: "vertical",
+                                outline: "none",
+                                boxSizing: "border-box",
                             }}
                         />
                         <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -495,11 +527,11 @@ export default function PostDetailPage() {
                                 disabled={submittingComment || !newComment.trim()}
                                 style={{
                                     padding: "8px 16px",
-                                    borderRadius: 8,
-                                    border: "1px solid #444",
-                                    background: submittingComment || !newComment.trim() ? "#999" : "#2563eb",
+                                    borderRadius: 6,
+                                    border: "none",
+                                    background: submittingComment || !newComment.trim() ? "#9ca3af" : "#3B82F6",
                                     color: "#fff",
-                                    fontWeight: 600,
+                                    fontWeight: 500,
                                     cursor: submittingComment || !newComment.trim() ? "not-allowed" : "pointer",
                                     fontSize: 14,
                                 }}
@@ -536,10 +568,13 @@ export default function PostDetailPage() {
                                                     width: "100%",
                                                     padding: "8px",
                                                     borderRadius: 6,
-                                                    border: "1px solid #444",
+                                                    border: "1px solid #e5e7eb",
+                                                    background: "#fff",
                                                     fontSize: 14,
                                                     fontFamily: "inherit",
                                                     resize: "vertical",
+                                                    outline: "none",
+                                                    boxSizing: "border-box",
                                                 }}
                                             />
                                             <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -550,10 +585,10 @@ export default function PostDetailPage() {
                                                     style={{
                                                         padding: "6px 12px",
                                                         borderRadius: 6,
-                                                        border: "1px solid #444",
-                                                        background: "#fff",
-                                                        color: "#111",
-                                                        fontWeight: 600,
+                                                        border: "none",
+                                                        background: "#f3f4f6",
+                                                        color: "#374151",
+                                                        fontWeight: 500,
                                                         cursor: submittingComment ? "not-allowed" : "pointer",
                                                         fontSize: 13,
                                                     }}
@@ -567,10 +602,10 @@ export default function PostDetailPage() {
                                                     style={{
                                                         padding: "6px 12px",
                                                         borderRadius: 6,
-                                                        border: "1px solid #444",
-                                                        background: submittingComment || !editingCommentContent.trim() ? "#999" : "#2563eb",
+                                                        border: "none",
+                                                        background: submittingComment || !editingCommentContent.trim() ? "#9ca3af" : "#3B82F6",
                                                         color: "#fff",
-                                                        fontWeight: 600,
+                                                        fontWeight: 500,
                                                         cursor: submittingComment || !editingCommentContent.trim() ? "not-allowed" : "pointer",
                                                         fontSize: 13,
                                                     }}
@@ -614,9 +649,9 @@ export default function PostDetailPage() {
                                                                 style={{
                                                                     padding: "4px 8px",
                                                                     borderRadius: 4,
-                                                                    border: "1px solid #444",
-                                                                    background: "#fff",
-                                                                    color: "#111",
+                                                                    border: "none",
+                                                                    background: "#f3f4f6",
+                                                                    color: "#374151",
                                                                     fontWeight: 500,
                                                                     cursor: submittingComment ? "not-allowed" : "pointer",
                                                                     fontSize: 12,
@@ -633,7 +668,7 @@ export default function PostDetailPage() {
                                                                 style={{
                                                                     padding: "4px 8px",
                                                                     borderRadius: 4,
-                                                                    border: "1px solid #dc2626",
+                                                                    border: "none",
                                                                     background: "#dc2626",
                                                                     color: "#fff",
                                                                     fontWeight: 500,

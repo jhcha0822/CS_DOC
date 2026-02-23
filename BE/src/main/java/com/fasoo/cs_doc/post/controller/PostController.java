@@ -1,5 +1,7 @@
 package com.fasoo.cs_doc.post.controller;
 
+import com.fasoo.cs_doc.assignment.dto.AssignmentPageResponse;
+import com.fasoo.cs_doc.assignment.service.AssignmentService;
 import com.fasoo.cs_doc.global.page.PageResponse;
 import com.fasoo.cs_doc.post.dto.*;
 import com.fasoo.cs_doc.post.service.PostService;
@@ -25,9 +27,11 @@ import java.util.List;
 public class PostController {
 
     private final PostService postService;
+    private final AssignmentService assignmentService;
 
-    public PostController(PostService postService) {
+    public PostController(PostService postService, AssignmentService assignmentService) {
         this.postService = postService;
+        this.assignmentService = assignmentService;
     }
 
     @Operation(
@@ -46,6 +50,18 @@ public class PostController {
     @GetMapping("/{id}")
     public PostDetailResponse get(@PathVariable Long id) {
         return postService.getDetail(id);
+    }
+
+    @Operation(
+            summary = "Get assignment page (one-shot)",
+            description = "For assignment posts: returns post meta, problem description, tasks, my submission with answers and reviews, total score. One API for the full assignment page."
+    )
+    @GetMapping("/{id}/assignment-page")
+    public AssignmentPageResponse getAssignmentPage(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId
+    ) {
+        return assignmentService.getAssignmentPage(id, userId);
     }
 
     @Operation(
@@ -100,11 +116,14 @@ public class PostController {
             @Parameter(description = "Category ID filter. If provided, includes the category and all its children.")
             @RequestParam(required = false) Long categoryId,
 
+            @Parameter(description = "Post kind filter: DOC, ASSIGNMENT. e.g. 실습 카테고리에서 ASSIGNMENT만 보기.")
+            @RequestParam(required = false) com.fasoo.cs_doc.post.domain.PostKind postKind,
+
             @ParameterObject
             @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable
     ) {
-        return postService.list(pageable, keyword, searchIn, categories, categoryId);
+        return postService.list(pageable, keyword, searchIn, categories, categoryId, postKind);
     }
 
     @Operation(
@@ -117,13 +136,14 @@ public class PostController {
             @RequestParam(value = "title", required = false) String title,
             @RequestParam(value = "categoryId") Long categoryId,
             @RequestParam(value = "isNotice", required = false) Boolean isNotice,
+            @RequestParam(value = "postKind", required = false) com.fasoo.cs_doc.post.domain.PostKind postKind,
             @RequestParam(value = "images", required = false) List<MultipartFile> images,
             @RequestParam(value = "attachments", required = false) List<MultipartFile> attachments,
             @RequestParam(value = "userId", required = false) Long userId
     ) {
         org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PostController.class);
-        log.info("createByUpload received - categoryId={}, title={}, isNotice={}, userId={}", categoryId, title, isNotice, userId);
-        return postService.createByUpload(file, title, null, categoryId, isNotice, images, attachments, userId);
+        log.info("createByUpload received - categoryId={}, title={}, isNotice={}, postKind={}, userId={}", categoryId, title, isNotice, postKind, userId);
+        return postService.createByUpload(file, title, null, categoryId, isNotice, images, attachments, userId, postKind);
     }
 
     @Operation(
@@ -168,10 +188,13 @@ public class PostController {
         Long userId = headerUserId != null ? headerUserId : req.userId();
         PostPatchRequest updatedReq = new PostPatchRequest(
                 req.title(),
+                req.summaryTitle(),
                 req.categoryId(),
                 req.markdown(),
                 req.isNotice(),
-                userId
+                req.maxScore(),
+                userId,
+                req.tasks()
         );
         return postService.patch(id, updatedReq);
     }

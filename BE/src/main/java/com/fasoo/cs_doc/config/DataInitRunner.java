@@ -27,7 +27,7 @@ public class DataInitRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        log.warn("data-init 프로필 활성화됨. post_version, post, category 전체 삭제 후 기본 카테고리 재생성합니다.");
+        log.warn("data-init 프로필 활성화됨. 실습(과제)·댓글·post_version·post·category 전체 삭제 후 기본 카테고리 재생성합니다.");
         dataInitService.resetAll();
     }
 }
