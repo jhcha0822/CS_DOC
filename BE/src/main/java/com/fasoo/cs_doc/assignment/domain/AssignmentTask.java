@@ -32,6 +32,10 @@ public class AssignmentTask {
     @Column(name = "max_score", nullable = false)
     private int maxScore = 10;
 
+    /** 난이도: HIGH(상), MEDIUM(중), LOW(하) */
+    @Column(name = "difficulty", nullable = true, length = 20)
+    private String difficulty;
+
     protected AssignmentTask() {}
 
     public AssignmentTask(Long postId, String title, int sortOrder) {
@@ -41,10 +45,15 @@ public class AssignmentTask {
     }
 
     public AssignmentTask(Long postId, String title, int sortOrder, int maxScore) {
+        this(postId, title, sortOrder, maxScore, null);
+    }
+
+    public AssignmentTask(Long postId, String title, int sortOrder, int maxScore, String difficulty) {
         this.postId = postId;
         this.title = title;
         this.sortOrder = sortOrder;
         this.maxScore = Math.max(1, Math.min(100, maxScore));
+        this.difficulty = (difficulty != null && !difficulty.isBlank()) ? difficulty : "MEDIUM";
     }
 
     @PrePersist
@@ -56,6 +65,7 @@ public class AssignmentTask {
     public int getSortOrder() { return sortOrder; }
     public String getDescriptionMdPath() { return descriptionMdPath; }
     public int getMaxScore() { return maxScore; }
+    public String getDifficulty() { return difficulty; }
 
     public void changeTitle(String title) {
         this.title = Objects.requireNonNull(title, "title").trim();
@@ -72,5 +82,9 @@ public class AssignmentTask {
 
     public void changeMaxScore(int maxScore) {
         this.maxScore = Math.max(1, Math.min(100, maxScore));
+    }
+
+    public void changeDifficulty(String difficulty) {
+        this.difficulty = (difficulty != null && !difficulty.isBlank()) ? difficulty : "MEDIUM";
     }
 }

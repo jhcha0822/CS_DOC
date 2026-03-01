@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import AppLayout from "../layouts/AppLayout.tsx";
 import LoginPage from "../pages/LoginPage";
+import SignUpPage from "../pages/SignUpPage";
 import PostListPage from "../pages/PostListPage";
 import PostDetailPage from "../pages/PostDetailPage";
 import PostEditorPage from "../pages/PostEditorPage";
@@ -10,10 +11,12 @@ import PostVersionDetailPage from "../pages/PostVersionDetailPage";
 import AssignmentPage from "../pages/AssignmentPage";
 import MemoPage from "../pages/MemoPage";
 import UserManagePage from "../pages/UserManagePage";
+import AssignmentGradesPage from "../pages/AssignmentGradesPage";
 
 export const router = createBrowserRouter([
     { path: "/", element: <Navigate to="/login" replace /> },
     { path: "/login", element: <LoginPage /> },
+    { path: "/signup", element: <SignUpPage /> },
     {
         path: "/",
         element: <AppLayout />,
@@ -28,6 +31,7 @@ export const router = createBrowserRouter([
             { path: "posts/:postId/versions/:versionNumber", element: <PostVersionDetailPage /> },
             { path: "memos", element: <MemoPage /> },
             { path: "users/manage", element: <UserManagePage /> },
+            { path: "admin/assignment-grades", element: <AssignmentGradesPage /> },
         ],
     },
 ]);

@@ -1,4 +1,7 @@
+# 기본 프로파일: 실제 운용(prod). test 프로파일은 보류(필요 시 --spring.profiles.active=test 로 실행)
 spring:
+  profiles:
+    active: prod
   jpa:
     open-in-view: false
     properties:

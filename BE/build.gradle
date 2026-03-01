@@ -33,6 +33,7 @@ dependencies {
 
     // DB
     runtimeOnly 'com.mysql:mysql-connector-j'
+    runtimeOnly 'com.microsoft.sqlserver:mssql-jdbc'
     implementation 'com.h2database:h2'
     // runtimeOnly 'com.h2database:h2'
 

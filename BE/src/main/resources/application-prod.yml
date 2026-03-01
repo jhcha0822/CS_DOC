@@ -1,0 +1,34 @@
+# 실제 운용 환경: Windows Server 2016 (192.168.11.181), MSSQL, 경로 D:\jhcha0822\CS_DOC
+spring:
+  datasource:
+    url: jdbc:sqlserver://localhost:1433;databaseName=cs_doc;encrypt=false;trustServerCertificate=true
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    username: ${CS_DOC_DB_USERNAME:sa}
+    password: ${CS_DOC_DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.SQLServerDialect
+        format_sql: true
+    show-sql: false
+
+  h2:
+    console:
+      enabled: false
+
+server:
+  port: ${CS_DOC_SERVER_PORT:8080}
+
+# 프로젝트 루트: D:\jhcha0822\CS_DOC (서비스·DB·마크다운 파일 모두 이 경로 기준)
+app:
+  storage:
+    base-dir: ${CS_DOC_BASE_DIR:D:/jhcha0822/CS_DOC}
+    md-root: ${app.storage.base-dir}/CS_DOC_DATA/md
+    upload-dir: ${app.storage.base-dir}/CS_DOC_DATA/uploads
+
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: INFO

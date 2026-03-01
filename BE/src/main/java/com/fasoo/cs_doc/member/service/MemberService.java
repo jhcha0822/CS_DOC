@@ -73,4 +73,18 @@ public class MemberService {
         }
         memberRepository.deleteById(id);
     }
+
+    /**
+     * 아이디/비밀번호로 로그인 검증 후 사용자 정보 반환.
+     * @throws IllegalArgumentException 아이디 없음 또는 비밀번호 불일치
+     */
+    @Transactional(readOnly = true)
+    public UserResponse login(String username, String rawPassword) {
+        Member member = memberRepository.findByUsername(username != null ? username.trim() : null)
+                .orElseThrow(() -> new IllegalArgumentException("아이디 또는 비밀번호가 올바르지 않습니다."));
+        if (!passwordEncoder.matches(rawPassword != null ? rawPassword : "", member.getPassword())) {
+            throw new IllegalArgumentException("아이디 또는 비밀번호가 올바르지 않습니다.");
+        }
+        return new UserResponse(member.getId(), member.getUsername(), member.getName(), member.getRole());
+    }
 }

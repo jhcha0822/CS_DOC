@@ -14,6 +14,7 @@ import {
     type CategoryItem,
 } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
+import ErrorModal from "../components/ErrorModal";
 import MDEditor from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
 
@@ -93,13 +94,20 @@ export default function PostEditorPage() {
     }, [catParam, qParam]);
 
     const allCategories = useEditableCategories();
-    const categoryOptions = useCategoryOptionsForDropdown(allCategories);
-    /** 선택 가능한 카테고리 = 공지사항 + 모든 하위(depth 1). ID 매칭용 */
+    /** 관리자는 전체 카테고리. 비관리자는 신규 작성 시 adminOnly 카테고리를 드롭다운에서 제외 */
+    const visibleCategories = useMemo(() => {
+        const user = getCurrentUser();
+        if (user?.role === "ADMIN") return allCategories;
+        if (isEdit) return allCategories;
+        return allCategories.filter((c) => !c.adminOnly);
+    }, [allCategories, isEdit]);
+    const categoryOptions = useCategoryOptionsForDropdown(visibleCategories);
+    /** 선택 가능한 카테고리 = 공지사항 + 모든 하위(depth 1). ID 매칭용 (실습은 관리자만 표시) */
     const editableCategories = useMemo(() => {
-        const notice = allCategories.find((c) => c.label === "공지사항" || c.code === "CAT_NOTICE");
-        const subs = allCategories.filter((c) => c.depth !== 0);
+        const notice = visibleCategories.find((c) => c.label === "공지사항" || c.code === "CAT_NOTICE");
+        const subs = visibleCategories.filter((c) => c.depth !== 0);
         return notice ? [notice, ...subs] : subs;
-    }, [allCategories]);
+    }, [visibleCategories]);
     /** 드롭다운 선택용. ID로 두어 모든 하위 카테고리를 개별 선택 가능하게 함 */
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
     const [isNotice, setIsNotice] = useState<boolean>(false);
@@ -126,7 +134,7 @@ export default function PostEditorPage() {
         return editableCategories.find(c => c.label === "공지사항" || c.code === "CAT_NOTICE");
     }, [editableCategories]);
 
-    // 신규 작성 시 URL의 cat 파라미터로 카테고리 자동 선택 (실습 등록: /posts/new?cat=1 등)
+    // 신규 작성 시 URL의 cat 파라미터로 카테고리 자동 선택. editableCategories에 있는 것만 적용(비관리자일 때 adminOnly 제외됨)
     const hasAppliedCatParam = useRef(false);
     useEffect(() => {
         if (!isEdit && catParam && editableCategories.length > 0 && !hasAppliedCatParam.current) {
@@ -213,6 +221,7 @@ export default function PostEditorPage() {
                             descriptionMarkdown: t.descriptionMarkdown ?? "",
                             sortOrder: i,
                             maxScore: t.maxScore ?? 0,
+                            difficulty: t.difficulty ?? "MEDIUM",
                         }))
                     );
                 }
@@ -809,10 +818,6 @@ export default function PostEditorPage() {
                 </div>
             </div>
 
-            {error && (
-                <div style={{ marginTop: 12, color: "var(--app-error)", fontWeight: 700 }}>{error}</div>
-            )}
-
             <div style={{ marginTop: 16, display: "grid", gap: 10, maxWidth: "100%", boxSizing: "border-box" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -946,6 +951,7 @@ export default function PostEditorPage() {
                                     min={1}
                                     max={1000}
                                     value={maxScore}
+                                    onFocus={(e) => e.currentTarget.select()}
                                     onChange={(e) => setMaxScore(Math.max(1, Math.min(1000, Number(e.target.value) || 100)))}
                                     style={{
                                         width: 100,
@@ -969,15 +975,26 @@ export default function PostEditorPage() {
                             </p>
                             {assignmentTasks.map((task, idx) => (
                                 <div key={idx} style={{ marginBottom: 16, padding: 12, background: "#fff", borderRadius: 8, border: "1px solid #e5e7eb" }}>
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
                                         <strong style={{ fontSize: 13 }}>세부 실습 {idx + 1}</strong>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                            <label style={{ fontSize: 12 }}>난이도</label>
+                                            <select
+                                                value={task.difficulty ?? "MEDIUM"}
+                                                onChange={(e) => setAssignmentTasks((prev) => prev.map((t, i) => i === idx ? { ...t, difficulty: e.target.value } : t))}
+                                                style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid #444" }}
+                                            >
+                                                <option value="LOW">하</option>
+                                                <option value="MEDIUM">중</option>
+                                                <option value="HIGH">상</option>
+                                            </select>
                                             <label style={{ fontSize: 12 }}>배점</label>
                                             <input
                                                 type="number"
                                                 min={0}
                                                 max={100}
                                                 value={task.maxScore ?? 0}
+                                                onFocus={(e) => e.currentTarget.select()}
                                                 onChange={(e) => {
                                                     const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
                                                     setAssignmentTasks((prev) => prev.map((t, i) => i === idx ? { ...t, maxScore: v } : t));
@@ -1008,7 +1025,7 @@ export default function PostEditorPage() {
                             ))}
                             <button
                                 type="button"
-                                onClick={() => setAssignmentTasks((prev) => [...prev, { title: `세부 실습 ${prev.length + 1}`, descriptionMarkdown: "", sortOrder: prev.length, maxScore: 0 }])}
+                                onClick={() => setAssignmentTasks((prev) => [...prev, { title: `세부 실습 ${prev.length + 1}`, descriptionMarkdown: "", sortOrder: prev.length, maxScore: 0, difficulty: "MEDIUM" }])}
                                 style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #3B82F6", background: "#eff6ff", color: "#3B82F6", fontWeight: 500, cursor: "pointer", fontSize: 13 }}
                             >
                                 + 세부 실습 추가
@@ -1173,6 +1190,7 @@ export default function PostEditorPage() {
                 </>
                 )}
             </div>
+            <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         </div>
     );
 }

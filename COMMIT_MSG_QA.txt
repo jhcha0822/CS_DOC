@@ -1,0 +1,41 @@
+chore: QA 테스트 진입 — 실습·알림·배포·메모 수정 통합
+
+QA 테스트에 진입합니다. 이 커밋 이후 추가 개발이 필요할 때 로컬에서
+이 커밋/이 메시지를 기준으로 이력을 참고해 재개할 수 있도록 정리합니다.
+
+---
+[로컬 재개 시 참고]
+- 기본 프로파일: application.yml 에서 spring.profiles.active: prod
+  → 로컬 개발 시: --spring.profiles.active=test (H2, Swagger, data-init 사용)
+- BE JAR 실행(운용): BE/run.bat (서버 경로 D:\jhcha0822\CS_DOC, JDK17, MSSQL)
+- FE 개발: FE/run-dev.bat 또는 npm run dev (API 베이스는 .env / VITE_API_BASE)
+- FE 프로덕션 빌드: .env.production 에 VITE_API_BASE 설정 후 빌드 → BE/run.bat 이 FE 정적 파일도 5173으로 서빙
+- 문서: docs/DEPLOY_MSSQL_WINDOWS.md, DEPLOY_SERVER_FE.md, FE_RUN.md, MSSQL_MEMO_FIX.md, FAQ_MEMO_AND_ROLES.md
+---
+[이번에 반영된 개발/수정 요약]
+
+■ 실습·평가·알림
+- 실습 등록 후 관리자가 "평가대상"만 지정. 실습채점조회는 해당 인원만 노출.
+- 평가대상 사용자: 로그인 시 미확인 시 모달, 확인 전까지 페이지 이동 시마다 팝업, 확인 후에는 우상단 종(🔔)에서만 목록.
+- 제출 완료 시: 사용자에게는 해당 실습 팝업 안 함. 관리자에게는 "평가 필요" 1회 모달.
+- 평가 완료 시: 관리자 알림 제거, 사용자에게 "평가 완료" 1회 팝업.
+- 엔티티/API: AssignmentRequest, AdminGradingNotification, UserGradedNotification, NotificationService, 실습채점 API 수정.
+
+■ 인증·회원
+- 로그인/회원 API 추가 (AuthController, LoginRequest, Sha256PasswordEncoder).
+- SecurityConfig: CORS 설정(CorsConfigurationSource), OPTIONS /api/** permitAll.
+
+■ QA·운용 환경
+- application-prod.yml: MSSQL, D:/jhcha0822/CS_DOC, DB 사용자/비밀번호/포트는 환경 변수(CS_DOC_*) 또는 기본값.
+- BE/run.bat: BE JAR + FE 정적(serve -l 5173) 동시 기동, JAVA_HOME=서버 jdk17 경로.
+- FE: .env.production, .env.production.example (VITE_API_BASE). CORS에 192.168.11.181:5173 허용.
+
+■ 메모·호환성
+- Memo.body: CLOB 대신 length=10000 으로 변경 (MSSQL 등에서 호환).
+- MemoRepository: JPQL에서 body 에 LOWER() 제거 (Hibernate 7 CLOB 타입 검증 오류 방지). 제목만 LOWER로 대소문자 무시 검색.
+
+■ 기타
+- H2 전용 스키마 마이그레이션에 @Profile("test") 적용 (prod 에서는 미실행).
+- build.gradle: MSSQL JDBC 드라이버 추가.
+- FE: NotificationModal, NotificationBell, AssignmentRequestFormModal, AssignmentGradesPage, SignUpPage, API 확장 등.
+- RUN.md: test / data-init / JAR 실행 방법 정리.

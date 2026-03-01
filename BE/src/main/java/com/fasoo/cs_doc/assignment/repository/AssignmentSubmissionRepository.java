@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface AssignmentSubmissionRepository extends JpaRepository<AssignmentSubmission, Long> {
     Optional<AssignmentSubmission> findByPostIdAndSubmitterId(Long postId, Long submitterId);
     List<AssignmentSubmission> findByPostId(Long postId);
+    List<AssignmentSubmission> findBySubmitterIdOrderBySubmittedAtDesc(Long submitterId);
 }

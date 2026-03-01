@@ -16,6 +16,7 @@ export type PostListItem = {
     attachments: string | null; // JSON array of attachment URLs
     createdAt: string;
     updatedAt: string;
+    createdByName?: string | null; // 작성자 이름
     updatedByName: string | null; // 최종 수정자 이름
     commentCount: number | null; // 댓글 수
     postKind?: string | null; // DOC | ASSIGNMENT
@@ -37,6 +38,8 @@ export type PostDetailAssignmentTask = {
     descriptionMarkdown: string;
     sortOrder: number;
     maxScore: number;
+    /** HIGH(상), MEDIUM(중), LOW(하) */
+    difficulty?: string | null;
 };
 
 export type PostDetail = {
@@ -236,6 +239,8 @@ export type PostTaskItemInput = {
     descriptionMarkdown?: string;
     sortOrder: number;
     maxScore: number;
+    /** HIGH(상), MEDIUM(중), LOW(하) */
+    difficulty?: string | null;
 };
 
 /** 게시글 등록/수정 시 세부 실습 입력용. PostTaskItemInput과 동일 */
@@ -294,6 +299,7 @@ export async function createPost(payload: PostCreatePayload): Promise<PostRespon
             descriptionMarkdown: t.descriptionMarkdown ?? "",
             sortOrder: t.sortOrder,
             maxScore: t.maxScore,
+            difficulty: t.difficulty ?? "MEDIUM",
         }));
     }
     if (payload.userId !== undefined) body.userId = payload.userId;
@@ -368,6 +374,7 @@ export type AssignmentTaskItem = {
     descriptionMarkdown: string;
     sortOrder: number;
     maxScore: number;
+    difficulty?: string | null;
 };
 
 export type AssignmentTaskAnswerItem = { taskId: number; answerMarkdown: string };
@@ -429,6 +436,7 @@ export type AssignmentPageResponse = {
     createdBy: number | null;
     createdByName: string | null;
     createdAt: string;
+    updatedAt?: string | null;
     dueAt: string | null;
     maxScore: number | null;
     problemMarkdown: string | null;
@@ -443,6 +451,131 @@ export type TaskScoreItem = {
     score: number;
     feedbackText?: string | null;
 };
+
+/** 관리자 실습 채점 조회 응답 */
+export type AdminAssignmentGradesResponse = {
+    assignments: Array<{
+        postId: number;
+        title: string;
+        maxScore: number | null;
+        tasks: Array<{ taskId: number; title: string; difficulty: string; maxScore: number }>;
+    }>;
+    byAssignment: Array<{
+        submissionId: number;
+        submitterId: number;
+        submitterName: string;
+        status: string;
+        totalScore: number;
+        maxScore: number;
+        taskScores: Array<{ taskId: number; taskTitle: string; difficulty: string; score: number; maxScore: number }>;
+    }>;
+    byUser: Array<{
+        postId: number;
+        postTitle: string;
+        submissionId: number;
+        status: string;
+        totalScore: number;
+        maxScore: number;
+        taskScores: Array<{ taskId: number; taskTitle: string; difficulty: string; score: number; maxScore: number }>;
+    }>;
+    /** 실습·사용자 미선택 시 전체 제출 목록 */
+    allSubmissions?: Array<{
+        postId: number;
+        postTitle: string;
+        submissionId: number;
+        submitterId: number;
+        submitterName: string;
+        status: string;
+        totalScore: number;
+        maxScore: number;
+        taskScores: Array<{ taskId: number; taskTitle: string; difficulty: string; score: number; maxScore: number }>;
+    }>;
+};
+
+export async function fetchAdminAssignmentGrades(params?: { assignmentId?: number; userId?: number }): Promise<AdminAssignmentGradesResponse> {
+    const url = new URL("/api/admin/assignment-grades", API_BASE);
+    if (params?.assignmentId != null) url.searchParams.set("assignmentId", String(params.assignmentId));
+    if (params?.userId != null) url.searchParams.set("userId", String(params.userId));
+    const raw = await fetchJson<AdminAssignmentGradesResponse & { all_submissions?: AdminAssignmentGradesResponse["allSubmissions"] }>(url.toString());
+    return {
+        ...raw,
+        allSubmissions: raw.allSubmissions ?? raw.all_submissions ?? [],
+    };
+}
+
+/** 실습 결과 작성 요청 (관리자 → 사용자) */
+export type AssignmentRequestItem = {
+    id: number;
+    postId: number;
+    postTitle: string;
+    requestedBy: number;
+    requestedByName: string | null;
+    createdAt: string;
+    readAt: string | null;
+};
+
+export async function fetchMyUnreadAssignmentRequests(): Promise<AssignmentRequestItem[]> {
+    const url = new URL("/api/assignment-requests/me/unread", API_BASE);
+    const list = await fetchJson<AssignmentRequestItem[]>(url.toString());
+    return list ?? [];
+}
+
+export async function markAssignmentRequestRead(id: number): Promise<void> {
+    const url = new URL(`/api/assignment-requests/${id}/read`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({ method: "PATCH" }));
+    if (!res.ok) throw new ApiError("확인 처리 실패", res.status, await res.text().catch(() => ""));
+}
+
+/** 할 일 실습 목록 (종 버튼용, 미제출 요청만) */
+export async function fetchMyTodoAssignmentRequests(): Promise<AssignmentRequestItem[]> {
+    const url = new URL("/api/assignment-requests/me/todo", API_BASE);
+    const list = await fetchJson<AssignmentRequestItem[]>(url.toString());
+    return list ?? [];
+}
+
+/** 관리자: 미확인 '평가 필요' 알림 */
+export type GradingNotificationItem = { postId: number; postTitle: string };
+export async function fetchUnreadGradingNotifications(): Promise<GradingNotificationItem[]> {
+    const url = new URL("/api/admin/grading-notifications/unread", API_BASE);
+    const list = await fetchJson<GradingNotificationItem[]>(url.toString());
+    return list ?? [];
+}
+
+/** 관리자: 평가할 목록 (종 버튼용) */
+export async function fetchGradingTodo(): Promise<GradingNotificationItem[]> {
+    const url = new URL("/api/admin/grading-notifications/todo", API_BASE);
+    const list = await fetchJson<GradingNotificationItem[]>(url.toString());
+    return list ?? [];
+}
+
+export async function markAllGradingRead(): Promise<void> {
+    const url = new URL("/api/admin/grading-notifications/read", API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({ method: "PATCH" }));
+    if (!res.ok) throw new ApiError("확인 처리 실패", res.status, await res.text().catch(() => ""));
+}
+
+/** 사용자: 미확인 '평가 완료된 실습' 알림 */
+export type GradedNotificationItem = { id: number; postId: number; postTitle: string };
+export async function fetchMyUnreadGradedNotifications(): Promise<GradedNotificationItem[]> {
+    const url = new URL("/api/assignment-requests/me/graded-unread", API_BASE);
+    const list = await fetchJson<GradedNotificationItem[]>(url.toString());
+    return list ?? [];
+}
+
+export async function markGradedNotificationRead(id: number): Promise<void> {
+    const url = new URL(`/api/assignment-requests/graded/${id}/read`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({ method: "PATCH" }));
+    if (!res.ok) throw new ApiError("확인 처리 실패", res.status, await res.text().catch(() => ""));
+}
+
+export async function createAssignmentRequests(postId: number, userIds: number[]): Promise<AssignmentRequestItem[]> {
+    const url = new URL("/api/admin/assignment-requests", API_BASE);
+    return fetchJson<AssignmentRequestItem[]>(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, userIds }),
+    });
+}
 
 function normalizeReviewItem(r: AssignmentReviewItem | null | undefined): AssignmentReviewItem | null {
     if (!r) return null;
@@ -712,6 +845,7 @@ export async function patchPost(
             descriptionMarkdown: t.descriptionMarkdown ?? "",
             sortOrder: t.sortOrder,
             maxScore: t.maxScore,
+            difficulty: t.difficulty ?? "MEDIUM",
         }));
     }
     if (payload.userId !== undefined) body.userId = payload.userId;
@@ -937,6 +1071,8 @@ export type CategoryItem = {
     parentLabel: string | null;
     depth: number;
     sortOrder: number;
+    /** 게시글 등록 시 관리자만 선택 가능(일반 사용자 드롭다운에서 제외). 카테고리 관리 페이지에서 설정 */
+    adminOnly?: boolean;
 };
 
 export type CategoryBulkUpdateItem = {
@@ -945,6 +1081,7 @@ export type CategoryBulkUpdateItem = {
     parentId: number | null;
     depth: number;
     sortOrder: number;
+    adminOnly?: boolean;
 };
 
 export type UserItem = {
@@ -966,6 +1103,28 @@ export type UserUpdatePayload = {
     name?: string;
     role: "ADMIN" | "USER";
 };
+
+/** 로그인 (아이디/비밀번호). 인증 헤더 없이 호출 */
+export async function login(username: string, password: string): Promise<UserItem> {
+    const url = new URL("/api/auth/login", API_BASE);
+    const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        let message = "아이디 또는 비밀번호가 올바르지 않습니다.";
+        try {
+            const json = JSON.parse(text) as { message?: string };
+            if (json?.message) message = json.message;
+        } catch {
+            if (text && text.length < 200) message = text;
+        }
+        throw new ApiError(message, res.status, text);
+    }
+    return res.json() as Promise<UserItem>;
+}
 
 export async function fetchUsers(): Promise<UserItem[]> {
     const url = new URL("/api/users", API_BASE);
@@ -998,6 +1157,28 @@ export async function createUser(payload: UserCreatePayload): Promise<UserItem> 
     return data;
 }
 
+/** 회원가입 전용: 인증 없이 사용자 생성 (일반 사용자 권한). */
+export async function signUp(username: string, password: string, name: string): Promise<UserItem> {
+    const url = new URL("/api/users", API_BASE);
+    const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password, name: name.trim(), role: "USER" }),
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        let message = "회원가입에 실패했습니다.";
+        try {
+            const json = JSON.parse(text) as { message?: string };
+            if (json?.message) message = json.message;
+        } catch {
+            if (text && text.length < 200) message = text;
+        }
+        throw new ApiError(message, res.status, text);
+    }
+    return res.json() as Promise<UserItem>;
+}
+
 export async function updateUser(id: number, payload: UserUpdatePayload): Promise<UserItem> {
     const url = new URL(`/api/users/${id}`, API_BASE);
     const data = await fetchJson<UserItem>(url.toString(), {
@@ -1018,7 +1199,11 @@ export async function deleteUser(id: number): Promise<void> {
 export async function fetchCategories(): Promise<CategoryItem[]> {
     const url = new URL("/api/categories", API_BASE);
     try {
-        return await fetchJson<CategoryItem[]>(url.toString());
+        const raw = await fetchJson<CategoryItem[]>(url.toString());
+        return (raw || []).map((c: CategoryItem & { admin_only?: boolean }) => ({
+            ...c,
+            adminOnly: c.adminOnly === true || c.admin_only === true,
+        }));
     } catch (e) {
         console.error("fetchCategories error:", e);
         throw e;

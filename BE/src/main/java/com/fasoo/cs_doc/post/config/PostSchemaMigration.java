@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 /**
- * 애플리케이션 기동 시 Post 테이블의 스키마 마이그레이션 수행.
+ * 애플리케이션 기동 시 Post 테이블의 스키마 마이그레이션 수행. H2 전용.
  * - category 컬럼을 nullable로 변경
  * - is_notice 컬럼 추가
  * - view_count 컬럼 추가
@@ -25,6 +26,7 @@ import java.util.List;
  * - post_version content_md → content_md_path (md 파일로 저장)
  */
 @Component
+@Profile("test")
 @Order(2)
 public class PostSchemaMigration implements ApplicationRunner {
 

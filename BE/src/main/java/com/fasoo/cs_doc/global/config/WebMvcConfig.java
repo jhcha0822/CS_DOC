@@ -2,6 +2,7 @@ package com.fasoo.cs_doc.global.config;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -19,10 +20,19 @@ public class WebMvcConfig implements WebMvcConfigurer {
     private StorageProperties storageProperties;
 
     @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/api/**")
+                .allowedOrigins("http://localhost:5173", "http://192.168.11.181:5173")
+                .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true);
+    }
+
+    @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/**")
-                .excludePathPatterns("/login", "/h2-console/**", "/swagger/**", "/v3/api-docs/**", "/error", "/uploads/**");
+                .excludePathPatterns("/login", "/api/auth/**", "/api/users", "/h2-console/**", "/swagger/**", "/v3/api-docs/**", "/error", "/uploads/**");
     }
 
     @Override

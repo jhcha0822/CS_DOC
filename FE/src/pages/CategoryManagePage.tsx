@@ -6,6 +6,7 @@ import {
     type CategoryBulkUpdateItem,
     type CategoryItem,
 } from "../lib/api";
+import ErrorModal from "../components/ErrorModal";
 
 /** id 기준 중복 제거 (첫 번째만 유지). API/상태 오류로 같은 id가 여러 번 들어오는 것 방지 */
 function dedupeById(list: CategoryItem[]): CategoryItem[] {
@@ -33,8 +34,9 @@ export default function CategoryManagePage() {
         try {
             const list = await fetchCategories();
             const deduped = dedupeById(list || []);
-            setOriginalItems(deduped);
-            setItems(deduped);
+            const withAdminOnly = deduped.map((c) => ({ ...c, adminOnly: c.adminOnly === true }));
+            setOriginalItems(withAdminOnly);
+            setItems(withAdminOnly);
             setHasChanges(false);
             setSelectedId(null);
         } catch (e) {
@@ -264,10 +266,10 @@ export default function CategoryManagePage() {
                 parentId: c.parentId,
                 depth: c.depth,
                 sortOrder: c.sortOrder,
+                adminOnly: c.adminOnly ?? false,
             }));
             await bulkUpdateCategories(bulkItems);
             await load();
-            window.location.reload();
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : "저장에 실패했습니다.";
             console.error("Failed to save categories:", e);
@@ -305,9 +307,8 @@ export default function CategoryManagePage() {
 
     return (
         <div className="p-4">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div style={{ marginBottom: 16 }}>
                 <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>카테고리 관리</h1>
-                <span style={{ fontSize: 12, opacity: 0.8 }}>추후 RBAC으로 페이지 접근 권한 부여 예정</span>
             </div>
 
             <div
@@ -466,12 +467,6 @@ export default function CategoryManagePage() {
                 </button>
             </div>
 
-            {error && (
-                <div style={{ marginBottom: 12, color: "var(--app-error, #c00)", fontWeight: 600 }}>
-                    {error}
-                </div>
-            )}
-
             {loading ? (
                 <div style={{ opacity: 0.8 }}>불러오는 중…</div>
             ) : (
@@ -487,18 +482,21 @@ export default function CategoryManagePage() {
                         <thead>
                             <tr style={{ borderBottom: "1px solid #444", background: "#f5f5f5" }}>
                                 <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700 }}>카테고리</th>
+                                <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700, width: 140 }}>관리자 권한 제어</th>
                             </tr>
                         </thead>
                         <tbody>
                             {sortedItems.length === 0 ? (
                                 <tr>
-                                    <td style={{ padding: 24, textAlign: "center", opacity: 0.8 }}>
+                                    <td colSpan={2} style={{ padding: 24, textAlign: "center", opacity: 0.8 }}>
                                         카테고리가 없습니다. 위에서 추가해 보세요.
                                     </td>
                                 </tr>
                             ) : (
                                 sortedItems.map((cat, index) => {
                                     const isSelected = selectedId === cat.id;
+                                    const currentItem = items.find((c) => c.id === cat.id) ?? cat;
+                                    const adminOnly = currentItem.adminOnly ?? false;
                                     return (
                                         <tr
                                             key={cat.id}
@@ -517,7 +515,7 @@ export default function CategoryManagePage() {
                                                 <div style={{ marginLeft: cat.depth * 20, display: "flex", alignItems: "center" }}>
                                                     <input
                                                         type="text"
-                                                        value={items.find((c) => c.id === cat.id)?.label ?? cat.label}
+                                                        value={currentItem.label}
                                                         onClick={(e) => e.stopPropagation()}
                                                         onChange={(e) => {
                                                             const updated = items.map((c) =>
@@ -538,6 +536,22 @@ export default function CategoryManagePage() {
                                                     />
                                                 </div>
                                             </td>
+                                            <td style={{ padding: "12px 14px", verticalAlign: "middle" }} onClick={(e) => e.stopPropagation()}>
+                                                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", margin: 0 }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={adminOnly}
+                                                        onChange={(e) => {
+                                                            const updated = items.map((c) =>
+                                                                c.id === cat.id ? { ...c, adminOnly: e.target.checked } : c
+                                                            );
+                                                            setItems(updated);
+                                                            setHasChanges(true);
+                                                        }}
+                                                        style={{ width: 18, height: 18, cursor: "pointer" }}
+                                                    />
+                                                </label>
+                                            </td>
                                         </tr>
                                     );
                                 })
@@ -546,6 +560,14 @@ export default function CategoryManagePage() {
                     </table>
                 </div>
             )}
+            {sortedItems.length > 0 && (
+                <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+                    <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>
+                        관리자 권한 제어 체크 시 해당 카테고리에는 관리자만 등록 가능
+                    </p>
+                </div>
+            )}
+            <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         </div>
     );
 }

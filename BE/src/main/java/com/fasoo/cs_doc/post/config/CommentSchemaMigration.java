@@ -6,15 +6,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Comment 테이블 스키마 마이그레이션.
- * comment 테이블이 없거나 필요한 컬럼이 없으면 자동으로 생성/추가합니다.
+ * Comment 테이블 스키마 마이그레이션. H2 전용.
  */
 @Component
+@Profile("test")
 @Order(100)
 public class CommentSchemaMigration implements ApplicationRunner {
 

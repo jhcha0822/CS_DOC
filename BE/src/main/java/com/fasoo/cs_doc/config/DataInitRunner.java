@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Profile("data-init")
-@Order(0)
+@Order(1)
 public class DataInitRunner implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DataInitRunner.class);
@@ -27,7 +27,7 @@ public class DataInitRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        log.warn("data-init 프로필 활성화됨. 실습(과제)·댓글·post_version·post·category 전체 삭제 후 기본 카테고리 재생성합니다.");
+        log.warn("data-init 프로필 활성화됨. 실습(과제)·댓글·post_version·post·memo·category 전체 삭제 후 기본 카테고리 재생성합니다. (User 회원 데이터는 초기화하지 않음)");
         dataInitService.resetAll();
     }
 }

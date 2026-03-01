@@ -6,14 +6,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 새 구조 마이그레이션: assignment_submission에 answer_md_path 추가, assignment_review 테이블 생성
+ * 새 구조 마이그레이션: assignment_submission에 answer_md_path 추가, assignment_review 테이블 생성. H2 전용.
  */
 @Component
+@Profile("test")
 @Order(4)
 public class AssignmentSchemaMigration implements ApplicationRunner {
 

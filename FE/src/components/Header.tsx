@@ -1,4 +1,5 @@
 import { getCurrentUser, logout } from "../lib/auth";
+import NotificationBell from "./NotificationBell";
 
 export default function Header() {
     const user = getCurrentUser();
@@ -39,8 +40,9 @@ export default function Header() {
                 </div>
             </div>
 
-            {/* 우측: 사용자 정보 및 액션 */}
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            {/* 우측: 알림 종 + 사용자 정보 및 액션 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <NotificationBell />
                 {/* 사용자 이름 */}
                 <span
                     style={{

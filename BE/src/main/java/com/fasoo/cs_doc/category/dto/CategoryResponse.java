@@ -1,5 +1,7 @@
 package com.fasoo.cs_doc.category.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Map;
 
 public record CategoryResponse(
@@ -9,7 +11,8 @@ public record CategoryResponse(
         Long parentId,
         String parentLabel,
         int depth,
-        int sortOrder
+        int sortOrder,
+        @JsonProperty("adminOnly") boolean adminOnly
 ) {
 
     public static CategoryResponse from(com.fasoo.cs_doc.category.domain.Category c, Map<Long, String> parentLabels) {
@@ -28,7 +31,8 @@ public record CategoryResponse(
                 parentId,
                 parentLabel,
                 c.getDepth(),
-                c.getSortOrder()
+                c.getSortOrder(),
+                c.isAdminOnly()
         );
     }
 }

@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { getPostVersion, ApiError, type PostVersion } from "../lib/api";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import "@uiw/react-markdown-preview/markdown.css";
+import { markdownPreviewImageComponents } from "../components/MarkdownImageWithModal";
+import ErrorModal from "../components/ErrorModal";
 
 function formatKST(iso: string) {
     const d = new Date(iso);
@@ -55,10 +57,10 @@ export default function PostVersionDetailPage() {
     if (error || !version) {
         return (
             <div style={{ padding: 24 }}>
-                <div style={{ color: "var(--app-error)", fontWeight: 800, marginBottom: 12 }}>{error ?? "버전을 찾을 수 없습니다."}</div>
                 <Link to="/posts/versions" style={{ color: "var(--app-link)", textDecoration: "underline" }}>
                     ← 이력 목록으로 돌아가기
                 </Link>
+                <ErrorModal open={!!error} message={error ?? "버전을 찾을 수 없습니다."} onClose={() => setError(null)} />
             </div>
         );
     }
@@ -117,7 +119,7 @@ export default function PostVersionDetailPage() {
                     minHeight: 200,
                 }}
             >
-                <MarkdownPreview source={version.contentMd || ""} />
+                <MarkdownPreview source={version.contentMd || ""} components={markdownPreviewImageComponents} />
             </div>
         </div>
     );

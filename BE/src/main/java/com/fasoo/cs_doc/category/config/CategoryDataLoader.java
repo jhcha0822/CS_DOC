@@ -105,11 +105,11 @@ public class CategoryDataLoader implements ApplicationRunner {
                     .orElse(null);
             
             if (child == null) {
-                // 하위 카테고리가 없으면 생성
-                child = new Category(code, label, newbieId, 1, i);
+                // 하위 카테고리가 없으면 생성 (실습은 관리자만 게시글 등록 시 선택 가능하도록 adminOnly=true)
+                child = new Category(code, label, newbieId, 1, i, "CAT_TRAINING".equals(code));
                 categoryRepository.save(child);
             } else {
-                // 하위 카테고리가 있으면 속성 업데이트
+                // 하위 카테고리가 있으면 속성 업데이트 (실습은 adminOnly=true 유지)
                 boolean needsSave = false;
                 if (!label.equals(child.getLabel())) {
                     child.setLabel(label);
@@ -129,6 +129,10 @@ public class CategoryDataLoader implements ApplicationRunner {
                 }
                 if (child.getSortOrder() != i) {
                     child.setSortOrder(i);
+                    needsSave = true;
+                }
+                if ("CAT_TRAINING".equals(code) && !child.isAdminOnly()) {
+                    child.setAdminOnly(true);
                     needsSave = true;
                 }
                 if (needsSave) {

@@ -16,6 +16,7 @@ public record AssignmentPageResponse(
         Long createdBy,
         String createdByName,
         LocalDateTime createdAt,
+        LocalDateTime updatedAt,
         LocalDateTime dueAt,
         Integer maxScore,
         String problemMarkdown,
@@ -24,13 +25,14 @@ public record AssignmentPageResponse(
         MySubmissionItem mySubmission,
         List<SubmissionItem> allSubmissions
 ) {
-    /** 세부 실습 1건: 내용(MD) + 배점 */
+    /** 세부 실습 1건: 내용(MD) + 배점 + 난이도(상/중/하) */
     public record TaskItem(
             Long taskId,
             String title,
             String descriptionMarkdown,
             int sortOrder,
-            int maxScore
+            int maxScore,
+            String difficulty // HIGH(상), MEDIUM(중), LOW(하)
     ) {}
 
     /** 세부 실습별 답안 1건 */

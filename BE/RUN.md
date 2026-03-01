@@ -16,6 +16,14 @@ cd BE
 - H2 DB, Swagger(`/swagger`), H2 콘솔(`/h2-console`) 사용
 - 데이터 경로: `CS_DOC_BASE_DIR` 미설정 시 `%USERPROFILE%\Documents\CS_DOC_DATA`
 
+**H2 콘솔에서 앱과 같은 DB에 연결하려면** (상대 경로 `./` 는 실행 위치에 따라 앱과 다른 DB를 가리킬 수 있음):
+
+- **JDBC URL**: `jdbc:h2:file:<절대경로>/CS_DOC_DATA/h2/csdoc;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE`  
+  - `CS_DOC_BASE_DIR` 미설정 시: `%USERPROFILE%\Documents` 를 절대 경로로 (예: `C:/Users/본인사용자명/Documents`)
+  - 설정한 경우: `CS_DOC_BASE_DIR` 값 사용
+- **User Name**: `sa`
+- **Password**: (비움)
+
 ---
 
 ## 2. data-init 프로필 (데이터 완전 초기화 후 실행)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchUsers, createUser, updateUser, deleteUser, type UserItem, type UserUpdatePayload } from "../lib/api";
 import { ApiError } from "../lib/api";
+import ErrorModal from "../components/ErrorModal";
 
 export default function UserManagePage() {
     const [users, setUsers] = useState<UserItem[]>([]);
@@ -148,12 +149,6 @@ export default function UserManagePage() {
                     </button>
                 )}
             </div>
-
-            {error && (
-                <div style={{ padding: 12, marginBottom: 16, background: "#fee2e2", color: "#991b1b", borderRadius: 8, border: "1px solid #fca5a5" }}>
-                    {error}
-                </div>
-            )}
 
             {creating && (
                 <form
@@ -478,6 +473,7 @@ export default function UserManagePage() {
                     )}
                 </div>
             )}
+            <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         </div>
     );
 }

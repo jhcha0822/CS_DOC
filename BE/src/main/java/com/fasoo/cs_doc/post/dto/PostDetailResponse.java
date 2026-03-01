@@ -25,12 +25,13 @@ public record PostDetailResponse(
         Integer maxScore,
         List<AssignmentTaskDetail> assignmentTasks // 세부 실습 목록 (ASSIGNMENT인 경우)
 ) {
-    /** 세부 실습 1건 (수정 폼용) */
+    /** 세부 실습 1건 (수정 폼용). difficulty: HIGH(상), MEDIUM(중), LOW(하) */
     public record AssignmentTaskDetail(
             Long taskId,
             String title,
             String descriptionMarkdown,
             int sortOrder,
-            int maxScore
+            int maxScore,
+            String difficulty
     ) {}
 }

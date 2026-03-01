@@ -7,16 +7,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 애플리케이션 기동 시 Post 테이블의 ID 시퀀스를 현재 최대 ID 값으로 동기화.
- * H2 데이터베이스에서 AUTO_INCREMENT 시퀀스가 데이터와 동기화되지 않을 때 발생하는
- * 기본 키 제약 조건 위반 오류를 방지합니다.
+ * 애플리케이션 기동 시 Post 테이블의 ID 시퀀스를 현재 최대 ID 값으로 동기화. H2 전용.
  */
 @Component
+@Profile("test")
 @Order(4)
 public class PostSequenceSync implements ApplicationRunner {
 

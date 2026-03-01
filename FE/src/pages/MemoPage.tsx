@@ -11,6 +11,7 @@ import {
 } from "../lib/api";
 import { ApiError } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
+import ErrorModal from "../components/ErrorModal";
 
 const API_BASE = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ?? "http://localhost:8080";
 
@@ -545,12 +546,6 @@ export default function MemoPage() {
                     color: "#1c1917",
                 }}
             >
-                {error && (
-                    <div style={{ padding: "8px 14px", background: "var(--app-error)", color: "#fff", fontSize: 13 }}>
-                        {error}
-                    </div>
-                )}
-
                 {creating && (
                     <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
                         <input
@@ -1016,6 +1011,7 @@ export default function MemoPage() {
                     </div>
                 </div>
             )}
+            <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         </div>
     );
 }

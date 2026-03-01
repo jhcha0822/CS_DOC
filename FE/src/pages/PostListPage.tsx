@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, createSearchParams, useSearchParams } from "react-router-dom";
+import { Link, createSearchParams, useNavigate, useSearchParams } from "react-router-dom";
 import { fetchCategories, fetchPosts, type CategoryItem, type PostListItem, type SearchIn } from "../lib/api";
 import { labelOfApiCategory } from "../lib/categories";
+import ErrorModal from "../components/ErrorModal";
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20] as const;
 
-function formatKST(iso: string) {
+function formatKSTDateTime(iso: string) {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
     const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 const SEARCH_IN_OPTIONS: Array<{ value: SearchIn; label: string }> = [
@@ -21,6 +22,7 @@ const SEARCH_IN_OPTIONS: Array<{ value: SearchIn; label: string }> = [
 
 
 export default function PostListPage() {
+    const navigate = useNavigate();
     const [sp, setSp] = useSearchParams();
     const catParam = sp.get("cat");
     const categoryId = catParam ? parseInt(catParam, 10) : null;
@@ -319,12 +321,6 @@ export default function PostListPage() {
             {loading && (
                 <div style={{ marginTop: 14, opacity: 0.8 }}>불러오는 중...</div>
             )}
-            {error && (
-                <div style={{ marginTop: 14, color: "var(--app-error)", fontWeight: 700 }}>
-                    {error}
-                </div>
-            )}
-
             {!loading && !error && items.length > 0 && (
                 <div style={{ marginTop: 14, marginBottom: 6, fontSize: 14, opacity: 0.85 }}>
                     총 {totalElements}개 (현재 {items.length}개 표시)
@@ -332,12 +328,22 @@ export default function PostListPage() {
             )}
             {!loading && !error && (
                 <div style={{ marginTop: 14, border: "1px solid #e5e7eb", borderRadius: 6, overflow: "hidden", background: "#fff" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", tableLayout: "fixed" }}>
+                        <colgroup>
+                            <col style={{ width: "14%" }} />
+                            <col style={{ width: "42%" }} />
+                            <col style={{ width: "14%" }} />
+                            <col style={{ width: "10%" }} />
+                            <col style={{ width: "6%" }} />
+                            <col style={{ width: "6%" }} />
+                            <col style={{ width: "8%" }} />
+                        </colgroup>
                         <thead>
                             <tr style={{ borderBottom: "1px solid #d1d5db", background: "#f3f4f6" }}>
                                 <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 600, color: "#374151" }}>카테고리</th>
                                 <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 600, color: "#374151" }}>제목</th>
                                 <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 600, color: "#374151" }}>작성일</th>
+                                <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 600, color: "#374151" }}>작성자</th>
                                 <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#374151" }}>조회</th>
                                 <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#374151" }}>첨부</th>
                                 <th style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#374151" }}>댓글</th>
@@ -346,7 +352,7 @@ export default function PostListPage() {
                         <tbody>
                             {items.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} style={{ padding: 24, textAlign: "center", opacity: 0.8 }}>
+                                    <td colSpan={7} style={{ padding: 24, textAlign: "center", opacity: 0.8 }}>
                                         게시글이 없습니다.
                                     </td>
                                 </tr>
@@ -359,10 +365,15 @@ export default function PostListPage() {
                                     return (
                                         <tr
                                             key={post.id}
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => navigate(detailUrl)}
+                                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(detailUrl); } }}
                                             style={{
                                                 borderBottom: "1px solid #e5e7eb",
                                                 background: isNotice ? "#fee2e2" : "#fff",
                                                 fontWeight: isNotice ? 700 : 400,
+                                                cursor: "pointer",
                                             }}
                                         >
                                             <td style={{ padding: "12px 14px" }}>
@@ -372,21 +383,24 @@ export default function PostListPage() {
                                                         ? (categories.find(c => c.id === post.categoryId)?.label ?? "기타")
                                                         : labelOfApiCategory(post.category))}
                                             </td>
-                                            <td style={{ padding: "12px 14px" }}>
-                                                <Link
-                                                    to={detailUrl}
-                                                    style={{
-                                                        color: "var(--app-text)",
-                                                        textDecoration: "none",
-                                                        fontWeight: isNotice ? 700 : 600,
-                                                    }}
-                                                >
-                                                    {post.title}
-                                                </Link>
+                                            <td
+                                                style={{
+                                                    padding: "12px 14px",
+                                                    color: "var(--app-text)",
+                                                    fontWeight: isNotice ? 700 : 600,
+                                                    whiteSpace: "nowrap",
+                                                    overflow: "hidden",
+                                                    textOverflow: "ellipsis",
+                                                }}
+                                                title={post.title}
+                                            >
+                                                {post.title}
                                             </td>
                                             <td style={{ padding: "12px 14px" }}>
-                                                {formatKST(post.createdAt)}
-                                                {post.updatedByName && <span style={{ marginLeft: 6, opacity: 0.7 }}>· {post.updatedByName}</span>}
+                                                {formatKSTDateTime(post.createdAt)}
+                                            </td>
+                                            <td style={{ padding: "12px 14px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                {post.createdByName ?? "-"}
                                             </td>
                                             <td style={{ padding: "12px 14px", textAlign: "center" }}>
                                                 {post.viewCount ?? 0}
@@ -528,6 +542,7 @@ export default function PostListPage() {
                     </div>
                 </div>
             )}
+            <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         </div>
     );
 }

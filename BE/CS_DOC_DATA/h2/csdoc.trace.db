@@ -4370,3 +4370,9 @@ Caused by: org.h2.jdbc.JdbcSQLNonTransientConnectionException: The connection wa
 	at org.h2.message.DbException.getJdbcSQLException(DbException.java:690)
 	at org.h2.message.DbException.getJdbcSQLException(DbException.java:489)
 	... 42 more
+2026-02-28 20:22:19.824501+09:00 jdbc[3]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "DELETE [*]* FROM MEMO"; expected "identifier"; SQL statement:
+DELETE * FROM MEMO [42001-240]
+2026-02-28 20:23:53.833771+09:00 jdbc[3]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "[*]DELTETE FROM POST_VERSION"; expected "DELETE, DROP"; SQL statement:
+DELTETE FROM POST_VERSION [42001-240]

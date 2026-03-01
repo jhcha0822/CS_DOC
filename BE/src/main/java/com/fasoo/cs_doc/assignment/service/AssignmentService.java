@@ -1,9 +1,13 @@
 package com.fasoo.cs_doc.assignment.service;
 
 import com.fasoo.cs_doc.assignment.domain.*;
+import com.fasoo.cs_doc.assignment.dto.AdminAssignmentGradesDto;
 import com.fasoo.cs_doc.assignment.dto.AssignmentPageResponse;
 import com.fasoo.cs_doc.assignment.dto.TaskScoreItem;
+import com.fasoo.cs_doc.assignment.domain.AdminGradingNotification;
 import com.fasoo.cs_doc.assignment.repository.*;
+import com.fasoo.cs_doc.assignment.domain.SubmissionStatus;
+import com.fasoo.cs_doc.assignment.domain.UserGradedNotification;
 import com.fasoo.cs_doc.category.repository.CategoryRepository;
 import com.fasoo.cs_doc.global.exception.NotFoundException;
 import com.fasoo.cs_doc.member.repository.MemberRepository;
@@ -24,9 +28,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.HashSet;
 
 import com.fasoo.cs_doc.member.domain.Member;
+import com.fasoo.cs_doc.member.domain.UserRole;
 
 /**
  * 실습(과제) 서비스: Post(ASSIGNMENT) - Submission(제출) - Review(평가).
@@ -42,6 +49,9 @@ public class AssignmentService {
     private final AssignmentSubmissionRepository submissionRepository;
     private final AssignmentReviewRepository reviewRepository;
     private final AssignmentTaskReviewRepository taskReviewRepository;
+    private final AssignmentRequestRepository assignmentRequestRepository;
+    private final AdminGradingNotificationRepository adminGradingNotificationRepository;
+    private final UserGradedNotificationRepository userGradedNotificationRepository;
     private final PostContentStorage storage;
     private final AttachmentStorage attachmentStorage;
     private final MemberRepository memberRepository;
@@ -53,6 +63,9 @@ public class AssignmentService {
                              AssignmentSubmissionRepository submissionRepository,
                              AssignmentReviewRepository reviewRepository,
                              AssignmentTaskReviewRepository taskReviewRepository,
+                             AssignmentRequestRepository assignmentRequestRepository,
+                             AdminGradingNotificationRepository adminGradingNotificationRepository,
+                             UserGradedNotificationRepository userGradedNotificationRepository,
                              PostContentStorage storage,
                              AttachmentStorage attachmentStorage,
                              MemberRepository memberRepository) {
@@ -63,6 +76,9 @@ public class AssignmentService {
         this.submissionRepository = submissionRepository;
         this.reviewRepository = reviewRepository;
         this.taskReviewRepository = taskReviewRepository;
+        this.assignmentRequestRepository = assignmentRequestRepository;
+        this.adminGradingNotificationRepository = adminGradingNotificationRepository;
+        this.userGradedNotificationRepository = userGradedNotificationRepository;
         this.storage = storage;
         this.attachmentStorage = attachmentStorage;
         this.memberRepository = memberRepository;
@@ -88,7 +104,8 @@ public class AssignmentService {
                     task.getTitle(),
                     descMd,
                     task.getSortOrder(),
-                    task.getMaxScore()
+                    task.getMaxScore(),
+                    task.getDifficulty() != null ? task.getDifficulty() : "MEDIUM"
             ));
         }
 
@@ -180,6 +197,7 @@ public class AssignmentService {
                 post.getCreatedBy(),
                 createdByName,
                 post.getCreatedAt(),
+                post.getUpdatedAt(),
                 post.getDueAt(),
                 post.getMaxScore(),
                 problemMarkdown,
@@ -333,6 +351,17 @@ public class AssignmentService {
         sub.setStatus(SubmissionStatus.SUBMITTED);
         sub.setSubmittedAt(LocalDateTime.now());
         submissionRepository.save(sub);
+        notifyAdminsGradingNeeded(sub.getPostId());
+    }
+
+    /** 사용자 제출 시 관리자들에게 "평가 필요" 알림 생성 */
+    private void notifyAdminsGradingNeeded(Long postId) {
+        List<Member> admins = memberRepository.findByRole(UserRole.ADMIN);
+        for (Member admin : admins) {
+            if (adminGradingNotificationRepository.findByAdminIdAndPostId(admin.getId(), postId).isEmpty()) {
+                adminGradingNotificationRepository.save(new AdminGradingNotification(admin.getId(), postId));
+            }
+        }
     }
 
     // --- 관리자 평가 ---
@@ -363,6 +392,8 @@ public class AssignmentService {
         sub.setStatus(SubmissionStatus.GRADED);
         sub.setGradedAt(LocalDateTime.now());
         submissionRepository.save(sub);
+        notifyUserGraded(sub.getSubmitterId(), sub.getPostId());
+        removeAdminGradingNotificationsIfAllGraded(sub.getPostId());
     }
 
     /** 세부 실습별 평가 저장 후 제출 총점·상태 반영 */
@@ -413,6 +444,25 @@ public class AssignmentService {
             reviewRepository.save(r);
         } else {
             reviewRepository.save(new AssignmentReview(submissionId, totalScore, combinedFeedback.length() > 0 ? combinedFeedback.toString() : null, reviewerId));
+        }
+        notifyUserGraded(sub.getSubmitterId(), sub.getPostId());
+        removeAdminGradingNotificationsIfAllGraded(sub.getPostId());
+    }
+
+    /** 평가 완료 시 제출자에게 "평가 완료" 알림 생성 */
+    private void notifyUserGraded(Long userId, Long postId) {
+        if (userGradedNotificationRepository.findByUserIdAndPostId(userId, postId).isPresent()) {
+            return;
+        }
+        userGradedNotificationRepository.save(new UserGradedNotification(userId, postId));
+    }
+
+    /** 해당 실습의 모든 제출이 평가 완료면 관리자 알림 삭제 */
+    private void removeAdminGradingNotificationsIfAllGraded(Long postId) {
+        List<AssignmentSubmission> submissions = submissionRepository.findByPostId(postId);
+        boolean allGraded = submissions.stream().allMatch(s -> s.getStatus() == SubmissionStatus.GRADED);
+        if (allGraded) {
+            adminGradingNotificationRepository.findByPostId(postId).forEach(adminGradingNotificationRepository::delete);
         }
     }
 
@@ -468,5 +518,229 @@ public class AssignmentService {
                 r.getReviewedAt(),
                 taskReviews
         );
+    }
+
+    /**
+     * 관리자 실습 채점 조회: 전체 실습 목록 + (선택 시) 실습별 제출 점수 또는 사용자별 제출 점수.
+     * @param assignmentId 실습(과제) ID로 필터 시 해당 실습의 사용자별 점수 목록 반환
+     * @param userId 사용자 ID로 필터 시 해당 사용자의 실습별 제출 점수 목록 반환
+     */
+    @Transactional(readOnly = true)
+    public AdminAssignmentGradesDto getAdminAssignmentGrades(Long assignmentId, Long userId) {
+        List<Post> assignmentPosts = postRepository.findByDeletedFalseAndPostKindOrderByCreatedAtDesc(PostKind.ASSIGNMENT);
+        // 실습별 평가대상자(userId 집합): AssignmentRequest가 있는 사용자만 실습채점조회에 노출
+        Map<Long, Set<Long>> postIdToTargetUserIds = new java.util.HashMap<>();
+        for (Post p : assignmentPosts) {
+            Set<Long> targetIds = assignmentRequestRepository.findByPostId(p.getId()).stream()
+                    .map(AssignmentRequest::getUserId)
+                    .collect(Collectors.toSet());
+            postIdToTargetUserIds.put(p.getId(), targetIds);
+        }
+        List<AdminAssignmentGradesDto.AssignmentSummary> assignmentSummaries = new ArrayList<>();
+        for (Post p : assignmentPosts) {
+            List<AssignmentTask> tasks = assignmentTaskRepository.findByPostIdOrderBySortOrderAsc(p.getId());
+            List<AdminAssignmentGradesDto.TaskSummary> taskSummaries = tasks.stream()
+                    .map(t -> new AdminAssignmentGradesDto.TaskSummary(
+                            t.getId(),
+                            t.getTitle(),
+                            t.getDifficulty() != null ? t.getDifficulty() : "MEDIUM",
+                            t.getMaxScore()
+                    ))
+                    .toList();
+            assignmentSummaries.add(new AdminAssignmentGradesDto.AssignmentSummary(
+                    p.getId(),
+                    p.getTitle(),
+                    p.getMaxScore(),
+                    taskSummaries
+            ));
+        }
+
+        List<AdminAssignmentGradesDto.SubmissionGradeRow> byAssignment = new ArrayList<>();
+        if (assignmentId != null) {
+            Post post = postRepository.findById(assignmentId).filter(p -> p.getPostKind() == PostKind.ASSIGNMENT && !p.getDeleted()).orElse(null);
+            if (post != null) {
+                Set<Long> targetUserIds = postIdToTargetUserIds.getOrDefault(post.getId(), Set.of());
+                List<AssignmentTask> tasks = assignmentTaskRepository.findByPostIdOrderBySortOrderAsc(post.getId());
+                List<AssignmentSubmission> submissions = submissionRepository.findByPostId(post.getId()).stream()
+                        .filter(sub -> targetUserIds.contains(sub.getSubmitterId()))
+                        .toList();
+                int maxScore = post.getMaxScore() != null ? post.getMaxScore() : 100;
+                for (AssignmentSubmission sub : submissions) {
+                    String name = memberRepository.findById(sub.getSubmitterId()).map(Member::getName).orElse("사용자 " + sub.getSubmitterId());
+                    List<AdminAssignmentGradesDto.TaskScoreCell> cells = new ArrayList<>();
+                    List<AssignmentTaskSubmission> taskSubs = assignmentTaskSubmissionRepository.findBySubmissionId(sub.getId());
+                    Map<Long, Integer> taskIdToScore = new java.util.HashMap<>();
+                    for (AssignmentTaskSubmission ts : taskSubs) {
+                        taskReviewRepository.findByTaskSubmissionId(ts.getId())
+                                .ifPresent(tr -> taskIdToScore.put(ts.getTaskId(), tr.getScore()));
+                    }
+                    int total = 0;
+                    for (AssignmentTask task : tasks) {
+                        int score = taskIdToScore.getOrDefault(task.getId(), 0);
+                        total += score;
+                        cells.add(new AdminAssignmentGradesDto.TaskScoreCell(
+                                task.getId(),
+                                task.getTitle(),
+                                task.getDifficulty() != null ? task.getDifficulty() : "MEDIUM",
+                                score,
+                                task.getMaxScore()
+                        ));
+                    }
+                    byAssignment.add(new AdminAssignmentGradesDto.SubmissionGradeRow(
+                            sub.getId(),
+                            sub.getSubmitterId(),
+                            name,
+                            sub.getStatus().name(),
+                            total,
+                            maxScore,
+                            cells
+                    ));
+                }
+            }
+        }
+
+        List<AdminAssignmentGradesDto.UserSubmissionRow> byUser = new ArrayList<>();
+        if (userId != null) {
+            Map<Long, AssignmentSubmission> postIdToSubmission = submissionRepository.findBySubmitterIdOrderBySubmittedAtDesc(userId).stream()
+                    .collect(Collectors.toMap(AssignmentSubmission::getPostId, s -> s, (a, b) -> a));
+            for (Post p : assignmentPosts) {
+                if (p.getDeleted()) continue;
+                if (!postIdToTargetUserIds.getOrDefault(p.getId(), Set.of()).contains(userId)) continue; // 평가대상만
+                List<AssignmentTask> tasks = assignmentTaskRepository.findByPostIdOrderBySortOrderAsc(p.getId());
+                int maxScore = p.getMaxScore() != null ? p.getMaxScore() : 100;
+                AssignmentSubmission sub = postIdToSubmission.get(p.getId());
+                if (sub != null) {
+                    List<AdminAssignmentGradesDto.TaskScoreCell> cells = new ArrayList<>();
+                    int total = 0;
+                    List<AssignmentTaskSubmission> taskSubs = assignmentTaskSubmissionRepository.findBySubmissionId(sub.getId());
+                    Map<Long, Integer> taskIdToScore = new java.util.HashMap<>();
+                    for (AssignmentTaskSubmission ts : taskSubs) {
+                        taskReviewRepository.findByTaskSubmissionId(ts.getId())
+                                .ifPresent(tr -> taskIdToScore.put(ts.getTaskId(), tr.getScore()));
+                    }
+                    for (AssignmentTask task : tasks) {
+                        int score = taskIdToScore.getOrDefault(task.getId(), 0);
+                        total += score;
+                        cells.add(new AdminAssignmentGradesDto.TaskScoreCell(
+                                task.getId(),
+                                task.getTitle(),
+                                task.getDifficulty() != null ? task.getDifficulty() : "MEDIUM",
+                                score,
+                                task.getMaxScore()
+                        ));
+                    }
+                    byUser.add(new AdminAssignmentGradesDto.UserSubmissionRow(
+                            p.getId(),
+                            p.getTitle(),
+                            sub.getId(),
+                            sub.getStatus().name(),
+                            total,
+                            maxScore,
+                            cells
+                    ));
+                } else {
+                    List<AdminAssignmentGradesDto.TaskScoreCell> emptyCells = new ArrayList<>();
+                    for (AssignmentTask task : tasks) {
+                        emptyCells.add(new AdminAssignmentGradesDto.TaskScoreCell(
+                                task.getId(),
+                                task.getTitle(),
+                                task.getDifficulty() != null ? task.getDifficulty() : "MEDIUM",
+                                0,
+                                task.getMaxScore()
+                        ));
+                    }
+                    byUser.add(new AdminAssignmentGradesDto.UserSubmissionRow(
+                            p.getId(),
+                            p.getTitle() != null ? p.getTitle() : "(제목 없음)",
+                            0L,
+                            "DRAFT",
+                            0,
+                            maxScore,
+                            emptyCells
+                    ));
+                }
+            }
+        }
+
+        List<AdminAssignmentGradesDto.AllSubmissionRow> allSubmissions = new ArrayList<>();
+        if (assignmentId == null && userId == null) {
+            Set<Long> targetUserIdsForPost = new HashSet<>();
+            for (Post p : assignmentPosts) {
+                if (p.getDeleted()) continue;
+                targetUserIdsForPost.clear();
+                targetUserIdsForPost.addAll(postIdToTargetUserIds.getOrDefault(p.getId(), Set.of()));
+                List<AssignmentTask> tasks = assignmentTaskRepository.findByPostIdOrderBySortOrderAsc(p.getId());
+                int maxScore = p.getMaxScore() != null ? p.getMaxScore() : 100;
+                List<AssignmentSubmission> submissions = submissionRepository.findByPostId(p.getId()).stream()
+                        .filter(sub -> targetUserIdsForPost.contains(sub.getSubmitterId()))
+                        .toList();
+                Set<Long> submittedUserIds = submissions.stream()
+                        .map(AssignmentSubmission::getSubmitterId)
+                        .collect(Collectors.toSet());
+                List<AdminAssignmentGradesDto.TaskScoreCell> emptyCells = new ArrayList<>();
+                for (AssignmentTask task : tasks) {
+                    emptyCells.add(new AdminAssignmentGradesDto.TaskScoreCell(
+                            task.getId(),
+                            task.getTitle(),
+                            task.getDifficulty() != null ? task.getDifficulty() : "MEDIUM",
+                            0,
+                            task.getMaxScore()
+                    ));
+                }
+                String postTitle = p.getTitle() != null ? p.getTitle() : "(제목 없음)";
+                for (Long targetUid : targetUserIdsForPost) {
+                    Member member = memberRepository.findById(targetUid).orElse(null);
+                    if (member == null || member.getRole() == UserRole.ADMIN) continue;
+                    if (!submittedUserIds.contains(member.getId())) {
+                        allSubmissions.add(new AdminAssignmentGradesDto.AllSubmissionRow(
+                                p.getId(),
+                                postTitle,
+                                0L,
+                                member.getId(),
+                                member.getName(),
+                                "DRAFT",
+                                0,
+                                maxScore,
+                                emptyCells
+                        ));
+                    }
+                }
+                for (AssignmentSubmission sub : submissions) {
+                    String name = memberRepository.findById(sub.getSubmitterId()).map(Member::getName).orElse("사용자 " + sub.getSubmitterId());
+                    List<AdminAssignmentGradesDto.TaskScoreCell> cells = new ArrayList<>();
+                    List<AssignmentTaskSubmission> taskSubs = assignmentTaskSubmissionRepository.findBySubmissionId(sub.getId());
+                    Map<Long, Integer> taskIdToScore = new java.util.HashMap<>();
+                    for (AssignmentTaskSubmission ts : taskSubs) {
+                        taskReviewRepository.findByTaskSubmissionId(ts.getId())
+                                .ifPresent(tr -> taskIdToScore.put(ts.getTaskId(), tr.getScore()));
+                    }
+                    int total = 0;
+                    for (AssignmentTask task : tasks) {
+                        int score = taskIdToScore.getOrDefault(task.getId(), 0);
+                        total += score;
+                        cells.add(new AdminAssignmentGradesDto.TaskScoreCell(
+                                task.getId(),
+                                task.getTitle(),
+                                task.getDifficulty() != null ? task.getDifficulty() : "MEDIUM",
+                                score,
+                                task.getMaxScore()
+                        ));
+                    }
+                    allSubmissions.add(new AdminAssignmentGradesDto.AllSubmissionRow(
+                            p.getId(),
+                            p.getTitle(),
+                            sub.getId(),
+                            sub.getSubmitterId(),
+                            name,
+                            sub.getStatus().name(),
+                            total,
+                            maxScore,
+                            cells
+                    ));
+                }
+            }
+        }
+
+        return new AdminAssignmentGradesDto(assignmentSummaries, byAssignment, byUser, allSubmissions);
     }
 }

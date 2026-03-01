@@ -156,31 +156,6 @@ export default function SideNav() {
                 메모
             </NavLink>
 
-            <div style={{ height: 20 }} />
-
-            <div style={{ fontSize: 11, color: "#9ca3af", margin: "12px 0 8px", paddingLeft: 12, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                바로가기
-            </div>
-
-            <a
-                href={`${import.meta.env.VITE_API_BASE || "http://localhost:8080"}/h2-console`}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                    display: "block",
-                    padding: "10px 12px",
-                    borderRadius: 6,
-                    textDecoration: "none",
-                    color: "#374151",
-                    background: "transparent",
-                    fontWeight: 500,
-                    fontSize: 14,
-                    marginBottom: 4,
-                }}
-            >
-                H2 Console
-            </a>
-
             {isAdmin() && (
                 <>
                     <div style={{ height: 20 }} />
@@ -230,9 +205,25 @@ export default function SideNav() {
                             background: isActive ? "#3B82F6" : "transparent",
                             fontWeight: isActive ? 600 : 500,
                             fontSize: 14,
+                            marginBottom: 4,
                         })}
                     >
                         사용자 관리
+                    </NavLink>
+                    <NavLink
+                        to="/admin/assignment-grades"
+                        style={({ isActive }) => ({
+                            display: "block",
+                            padding: "10px 12px",
+                            borderRadius: 6,
+                            textDecoration: "none",
+                            color: isActive ? "#ffffff" : "#374151",
+                            background: isActive ? "#3B82F6" : "transparent",
+                            fontWeight: isActive ? 600 : 500,
+                            fontSize: 14,
+                        })}
+                    >
+                        실습 채점 조회
                     </NavLink>
                 </>
             )}

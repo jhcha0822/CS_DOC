@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { getDeletionHistory, getPostVersions, listDeletedPosts, getAllChangeHistory, getPostVersion, getChangeHistoryForPost, type PostListItem, type PostVersion, type ChangeHistoryItem, ApiError } from "../lib/api";
+import { getAllChangeHistory, getPostVersion, getChangeHistoryForPost, type PostVersion, type ChangeHistoryItem, ApiError } from "../lib/api";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import "@uiw/react-markdown-preview/markdown.css";
+import { markdownPreviewImageComponents } from "../components/MarkdownImageWithModal";
 import { fetchCategories, type CategoryItem } from "../lib/api";
 import { labelOfApiCategory } from "../lib/categories";
+import ErrorModal from "../components/ErrorModal";
 
 const PAGE_SIZE_OPTIONS = [10, 15, 20] as const;
 
@@ -37,99 +39,23 @@ function parseAttachmentDisplayNames(attachments: string | null): string[] {
 }
 
 export default function PostVersionHistoryPage() {
-    const [viewMode, setViewMode] = useState<"list" | "table">("table"); // "list" 또는 "table"
     const [searchKeyword, setSearchKeyword] = useState("");
-    const [searchPostId, setSearchPostId] = useState("");
+    const [_searchPostId, setSearchPostId] = useState("");
     const [searchType, setSearchType] = useState<"제목" | "ID">("제목");
     const [changeTypeFilter, setChangeTypeFilter] = useState<"전체" | "생성" | "수정" | "삭제">("전체");
-    const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
     const [selectedVersion, setSelectedVersion] = useState<PostVersion | null>(null);
     const [selectedHistoryItem, setSelectedHistoryItem] = useState<ChangeHistoryItem | null>(null);
-    const [deletedPosts, setDeletedPosts] = useState<PostListItem[]>([]);
     const [changeHistory, setChangeHistory] = useState<ChangeHistoryItem[]>([]);
-    const [versions, setVersions] = useState<PostVersion[]>([]);
     const [categories, setCategories] = useState<CategoryItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showDeletedHistory, setShowDeletedHistory] = useState(false);
-    const [page, setPage] = useState(0);
-    const [totalPages, setTotalPages] = useState(0);
     const [historyPage, setHistoryPage] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
     const [postHistoryModalOpen, setPostHistoryModalOpen] = useState(false);
     const [postHistory, setPostHistory] = useState<ChangeHistoryItem[]>([]);
     const [selectedPostIdForModal, setSelectedPostIdForModal] = useState<number | null>(null);
     const [pageSize, setPageSize] = useState(10);
     const loadReqIdRef = useRef(0);
-
-    const loadDeletedPosts = useCallback(async () => {
-        const reqId = ++loadReqIdRef.current;
-        setLoading(true);
-        setError(null);
-        try {
-            const postIdNum = searchPostId.trim() ? Number(searchPostId.trim()) : undefined;
-            const result = await listDeletedPosts(
-                searchKeyword.trim() || undefined,
-                postIdNum,
-                page,
-                pageSize
-            );
-            if (reqId !== loadReqIdRef.current) return;
-            setDeletedPosts(result.items || []);
-            setTotalPages(result.totalPages || 0);
-        } catch (e) {
-            const msg =
-                e instanceof ApiError
-                    ? e.message
-                    : e instanceof Error
-                      ? e.message
-                      : "삭제된 게시글을 불러오지 못했습니다.";
-            setError(msg);
-            setDeletedPosts([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [searchKeyword, searchPostId, page, pageSize]);
-
-    const loadDeletionHistory = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const history = await getDeletionHistory();
-            setDeletedPosts(history);
-        } catch (e) {
-            const msg =
-                e instanceof ApiError
-                    ? e.message
-                    : e instanceof Error
-                      ? e.message
-                      : "삭제 이력을 불러오지 못했습니다.";
-            setError(msg);
-            setDeletedPosts([]);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    const loadVersions = useCallback(async (postId: number) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const vers = await getPostVersions(postId);
-            setVersions(vers);
-            setSelectedVersion(null); // 초기화
-        } catch (e) {
-            const msg =
-                e instanceof ApiError
-                    ? e.message
-                    : e instanceof Error
-                      ? e.message
-                      : "버전 이력을 불러오지 못했습니다.";
-            setError(msg);
-            setVersions([]);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
 
     const loadChangeHistory = useCallback(async () => {
         const reqId = ++loadReqIdRef.current;
@@ -164,16 +90,8 @@ export default function PostVersionHistoryPage() {
     }, []);
 
     useEffect(() => {
-        if (viewMode === "table") {
-            loadChangeHistory();
-        } else {
-            if (showDeletedHistory) {
-                loadDeletionHistory();
-            } else {
-                loadDeletedPosts();
-            }
-        }
-    }, [viewMode, showDeletedHistory, loadDeletedPosts, loadDeletionHistory, loadChangeHistory]);
+        loadChangeHistory();
+    }, [loadChangeHistory]);
 
     useEffect(() => {
         setHistoryPage(0);
@@ -181,29 +99,11 @@ export default function PostVersionHistoryPage() {
 
     useEffect(() => {
         setHistoryPage(0);
-        setPage(0);
     }, [pageSize]);
 
     const handleSearch = () => {
-        setPage(0);
-        if (viewMode === "table") {
-            setHistoryPage(0);
-        } else {
-            if (showDeletedHistory) {
-                loadDeletionHistory();
-            } else {
-                loadDeletedPosts();
-            }
-        }
-    };
-
-    const handlePostClick = (postId: number) => {
-        setSelectedPostId(postId);
-        loadVersions(postId);
-    };
-
-    const handleVersionClick = (version: PostVersion) => {
-        setSelectedVersion(version);
+        setHistoryPage(0);
+        loadChangeHistory();
     };
 
     const handleHistoryItemClick = async (item: ChangeHistoryItem) => {
@@ -245,7 +145,7 @@ export default function PostVersionHistoryPage() {
             <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 16 }}>이력</div>
 
             {/* 검색 영역 */}
-            <div style={{ marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
                 <select
                     value={searchType}
                     onChange={(e) => setSearchType(e.target.value as "제목" | "ID")}
@@ -268,10 +168,11 @@ export default function PostVersionHistoryPage() {
                         if (e.key === "Enter") handleSearch();
                     }}
                     style={{
+                        flex: 1,
+                        minWidth: 200,
                         padding: "8px 12px",
                         borderRadius: 8,
                         border: "1px solid #444",
-                        minWidth: 200,
                     }}
                 />
                 <select
@@ -308,8 +209,7 @@ export default function PostVersionHistoryPage() {
                         setSearchKeyword("");
                         setSearchPostId("");
                         setChangeTypeFilter("전체");
-                        setPage(0);
-                        if (viewMode === "table") setHistoryPage(0);
+                        setHistoryPage(0);
                     }}
                     style={{
                         padding: "8px 16px",
@@ -322,43 +222,17 @@ export default function PostVersionHistoryPage() {
                 >
                     초기화
                 </button>
-                <button
-                    onClick={() => {
-                        setViewMode(viewMode === "table" ? "list" : "table");
-                        setSelectedPostId(null);
-                        setVersions([]);
-                        setSelectedVersion(null);
-                        setSelectedHistoryItem(null);
-                    }}
-                    style={{
-                        padding: "8px 16px",
-                        borderRadius: 8,
-                        border: "1px solid #444",
-                        background: viewMode === "table" ? "#10b981" : "#fff",
-                        color: viewMode === "table" ? "#fff" : "#111",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                    }}
-                >
-                    {viewMode === "table" ? "테이블 보기" : "목록 보기"}
-                </button>
             </div>
 
-            {error && (
-                <div style={{ marginBottom: 16, color: "var(--app-error)", fontWeight: 700 }}>
-                    {error}
-                </div>
-            )}
-
-            {viewMode === "table" ? (
-                /* 테이블 뷰 */
-                <div style={{ border: "1px solid var(--app-border)", borderRadius: 12, padding: 16, background: "var(--app-bg)" }}>
-                    {loading && <div style={{ opacity: 0.8, padding: 20 }}>불러오는 중...</div>}
-                    {!loading && changeHistory.length === 0 && (
-                        <div style={{ opacity: 0.6, padding: 20 }}>변경 이력이 없습니다.</div>
-                    )}
-                    {!loading && changeHistory.length > 0 && (
-                        <>
+            {/* 변경 이력 단일 테이블 */}
+            <div style={{ border: "1px solid var(--app-border)", borderRadius: 12, padding: 16, background: "var(--app-bg)" }}>
+                {loading && <div style={{ opacity: 0.8, padding: 20 }}>불러오는 중...</div>}
+                {!loading && changeHistory.length === 0 && (
+                    <div style={{ opacity: 0.6, padding: 20 }}>변경 이력이 없습니다.</div>
+                )}
+                {!loading && changeHistory.length > 0 && (
+                    <>
+                        <div style={{ overflowX: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                 <thead>
                                     <tr style={{ borderBottom: "2px solid #ddd", background: "#f5f5f5" }}>
@@ -379,7 +253,6 @@ export default function PostVersionHistoryPage() {
                                             : labelOfApiCategory(item.category);
                                         const attachNames = parseAttachmentDisplayNames(item.attachments);
                                         const hasAttachments = attachNames.length > 0;
-                                        
                                         return (
                                             <tr
                                                 key={`${item.postId}-${item.changeType}-${item.versionNumber}-${idx}`}
@@ -419,20 +292,21 @@ export default function PostVersionHistoryPage() {
                                     })}
                                 </tbody>
                             </table>
-                            {totalPages > 0 && (
-                                <div
-                                    style={{
-                                        marginTop: 16,
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        alignItems: "center",
-                                        gap: 6,
-                                        flexWrap: "wrap",
-                                        width: "100%",
-                                    }}
-                                >
-                                    <div style={{ flex: 1, minWidth: 0 }} />
-                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+                        </div>
+                        {totalPages > 0 && (
+                            <div
+                                style={{
+                                    marginTop: 16,
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    flexWrap: "wrap",
+                                    width: "100%",
+                                }}
+                            >
+                                <div style={{ flex: 1, minWidth: 0 }} />
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
                                     <button
                                         type="button"
                                         onClick={() => setHistoryPage(0)}
@@ -482,8 +356,8 @@ export default function PostVersionHistoryPage() {
                                     >
                                         마지막
                                     </button>
-                                    </div>
-                                    <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", minWidth: 0 }}>
+                                </div>
+                                <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", minWidth: 0 }}>
                                     <select
                                         value={pageSize}
                                         onChange={(e) => setPageSize(Number(e.target.value))}
@@ -499,225 +373,12 @@ export default function PostVersionHistoryPage() {
                                             <option key={n} value={n}>{n}개</option>
                                         ))}
                                     </select>
-                                    </div>
-                                </div>
-                            )}
-                        </>
-                    )}
-                </div>
-            ) : (
-                /* 목록 뷰 (기존) */
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                {/* 왼쪽: 게시글 목록 */}
-                <div
-                    style={{
-                        border: "1px solid var(--app-border)",
-                        borderRadius: 12,
-                        padding: 16,
-                        background: "var(--app-bg)",
-                        maxHeight: "80vh",
-                        overflowY: "auto",
-                    }}
-                >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                        <span style={{ fontSize: 16, fontWeight: 800 }}>
-                            {showDeletedHistory ? "삭제 이력 (최신순)" : "게시글 목록"}
-                        </span>
-                        <button
-                            onClick={() => { setShowDeletedHistory(!showDeletedHistory); setPage(0); }}
-                            style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #444", cursor: "pointer", fontSize: 13 }}
-                        >
-                            {showDeletedHistory ? "게시글 목록" : "삭제 이력"}
-                        </button>
-                    </div>
-                    {loading && <div style={{ opacity: 0.8 }}>불러오는 중...</div>}
-                    {!loading && deletedPosts.length === 0 && (
-                        <div style={{ opacity: 0.6 }}>게시글이 없습니다.</div>
-                    )}
-                    {!loading &&
-                        deletedPosts.map((post) => (
-                            <div
-                                key={post.id}
-                                onClick={() => handlePostClick(post.id)}
-                                style={{
-                                    padding: 12,
-                                    marginBottom: 8,
-                                    borderRadius: 8,
-                                    border: "1px solid #ddd",
-                                    background: selectedPostId === post.id ? "#e3f2fd" : "#f9f9f9",
-                                    cursor: "pointer",
-                                }}
-                            >
-                                <div style={{ fontWeight: 700, marginBottom: 4 }}>{post.title}</div>
-                                <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                    ID: {post.id} | 수정: {formatKST(post.updatedAt)}
                                 </div>
                             </div>
-                        ))}
-                    {!showDeletedHistory && totalPages > 0 && (
-                        <div
-                            style={{
-                                marginTop: 16,
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                gap: 6,
-                                flexWrap: "wrap",
-                                width: "100%",
-                            }}
-                        >
-                            <div style={{ flex: 1, minWidth: 0 }} />
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
-                            <button
-                                type="button"
-                                onClick={() => setPage(0)}
-                                disabled={page <= 0}
-                                style={{
-                                    padding: "8px 12px",
-                                    border: "1px solid #444",
-                                    borderRadius: 6,
-                                    background: "#fff",
-                                    cursor: page <= 0 ? "not-allowed" : "pointer",
-                                    opacity: page <= 0 ? 0.6 : 1,
-                                }}
-                            >
-                                처음
-                            </button>
-                            {Array.from({ length: totalPages }, (_, i) => i)
-                                .filter((n) => n >= Math.max(0, page - 2) && n <= Math.min(totalPages - 1, page + 2))
-                                .map((n) => (
-                                    <button
-                                        key={n}
-                                        type="button"
-                                        onClick={() => setPage(n)}
-                                        style={{
-                                            padding: "8px 12px",
-                                            border: "1px solid #444",
-                                            borderRadius: 6,
-                                            background: n === page ? "#2563eb" : "#fff",
-                                            color: n === page ? "#fff" : "#111",
-                                            cursor: "pointer",
-                                        }}
-                                    >
-                                        {n + 1}
-                                    </button>
-                                ))}
-                            <button
-                                type="button"
-                                onClick={() => setPage(Math.max(0, totalPages - 1))}
-                                disabled={page >= totalPages - 1}
-                                style={{
-                                    padding: "8px 12px",
-                                    border: "1px solid #444",
-                                    borderRadius: 6,
-                                    background: "#fff",
-                                    cursor: page >= totalPages - 1 ? "not-allowed" : "pointer",
-                                    opacity: page >= totalPages - 1 ? 0.6 : 1,
-                                }}
-                            >
-                                마지막
-                            </button>
-                            </div>
-                            <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", minWidth: 0 }}>
-                            <select
-                                value={pageSize}
-                                onChange={(e) => setPageSize(Number(e.target.value))}
-                                style={{
-                                    padding: "8px 12px",
-                                    borderRadius: 6,
-                                    border: "1px solid #444",
-                                    background: "#fff",
-                                    cursor: "pointer",
-                                }}
-                            >
-                                {PAGE_SIZE_OPTIONS.map((n) => (
-                                    <option key={n} value={n}>{n}개</option>
-                                ))}
-                            </select>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* 오른쪽: 버전 목록 및 내용 */}
-                <div
-                    style={{
-                        border: "1px solid var(--app-border)",
-                        borderRadius: 12,
-                        padding: 16,
-                        background: "var(--app-bg)",
-                        maxHeight: "80vh",
-                        overflowY: "auto",
-                    }}
-                >
-                    {selectedPostId === null ? (
-                        <div style={{ opacity: 0.6 }}>게시글을 선택하세요.</div>
-                    ) : (
-                        <>
-                            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 12 }}>
-                                버전 이력 (최신 → 오래된 순)
-                            </div>
-                            {loading && <div style={{ opacity: 0.8 }}>불러오는 중...</div>}
-                            {!loading && versions.length === 0 && (
-                                <div style={{ opacity: 0.6 }}>버전 이력이 없습니다.</div>
-                            )}
-                            {!loading &&
-                                versions.map((version) => (
-                                    <div
-                                        key={version.id}
-                                        onClick={() => handleVersionClick(version)}
-                                        style={{
-                                            padding: 12,
-                                            marginBottom: 8,
-                                            borderRadius: 8,
-                                            border: "1px solid #ddd",
-                                            background:
-                                                selectedVersion?.id === version.id ? "#e3f2fd" : "#f9f9f9",
-                                            cursor: "pointer",
-                                        }}
-                                    >
-                                        <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                                            버전 {version.versionNumber}
-                                        </div>
-                                        <div style={{ fontSize: 12, opacity: 0.7 }}>
-                                            생성: {formatKST(version.createdAt)}
-                                            {version.createdByName && ` | 작성자: ${version.createdByName}`}
-                                        </div>
-                                    </div>
-                                ))}
-                            {selectedVersion && (
-                                <div
-                                    style={{
-                                        marginTop: 16,
-                                        padding: 16,
-                                        borderRadius: 8,
-                                        border: "1px solid #ddd",
-                                        background: "#fff",
-                                    }}
-                                >
-                                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>
-                                        버전 {selectedVersion.versionNumber} 내용
-                                    </div>
-                                    <div
-                                        className="markdown-preview"
-                                        data-color-mode="light"
-                                        style={{
-                                            padding: 16,
-                                            background: "var(--app-bg)",
-                                            borderRadius: 8,
-                                            overflow: "auto",
-                                            maxHeight: "50vh",
-                                        }}
-                                    >
-                                        <MarkdownPreview source={selectedVersion.contentMd || ""} />
-                                    </div>
-                                </div>
-                            )}
-                        </>
-                    )}
-                </div>
+                        )}
+                    </>
+                )}
             </div>
-            )}
 
             {/* 게시글별 변경 이력 모달 */}
             {postHistoryModalOpen && (
@@ -823,7 +484,7 @@ export default function PostVersionHistoryPage() {
                                     </Link>
                                 </div>
                                 <div className="markdown-preview" data-color-mode="light" style={{ padding: 16, background: "#f9f9f9", borderRadius: 8, maxHeight: 300, overflow: "auto" }}>
-                                    <MarkdownPreview source={selectedVersion.contentMd || ""} />
+                                    <MarkdownPreview components={markdownPreviewImageComponents} source={selectedVersion.contentMd || ""} />
                                 </div>
                             </div>
                         )}
@@ -835,6 +496,7 @@ export default function PostVersionHistoryPage() {
                     </div>
                 </div>
             )}
+            <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         </div>
     );
 }

@@ -14,6 +14,7 @@ import com.fasoo.cs_doc.post.dto.*;
 import com.fasoo.cs_doc.assignment.domain.AssignmentTask;
 import com.fasoo.cs_doc.assignment.dto.AssignmentTaskItemRequest;
 import com.fasoo.cs_doc.assignment.repository.AssignmentTaskRepository;
+import com.fasoo.cs_doc.member.domain.UserRole;
 import com.fasoo.cs_doc.post.repository.PostRepository;
 import com.fasoo.cs_doc.post.repository.PostVersionRepository;
 import jakarta.persistence.EntityManager;
@@ -119,6 +120,7 @@ public class PostService {
         // 기존 데이터 호환성을 위해 category가 있으면 사용, 없으면 null
         PostCategory category = p.getCategory(); // nullable
         
+        String createdByName = getUserName(p.getCreatedBy());
         String updatedByName = getUserName(p.getUpdatedBy());
         long commentCount = commentRepository.countByPostId(p.getId());
         
@@ -133,6 +135,7 @@ public class PostService {
                 p.getAttachments(),
                 p.getCreatedAt(),
                 p.getUpdatedAt(),
+                createdByName,
                 updatedByName,
                 commentCount
         );
@@ -377,7 +380,7 @@ public class PostService {
             }
             int sortOrder = 0;
             for (AssignmentTaskItemRequest t : req.tasks()) {
-                AssignmentTask task = new AssignmentTask(saved.getId(), t.title(), sortOrder++, t.maxScore());
+                AssignmentTask task = new AssignmentTask(saved.getId(), t.title(), sortOrder++, t.maxScore(), t.difficulty());
                 AssignmentTask savedTask = assignmentTaskRepository.save(task);
                 String path = storage.writeAssignmentTaskDescription(saved.getId(), savedTask.getId(), t.descriptionMarkdown() != null ? t.descriptionMarkdown() : "");
                 savedTask.changeDescriptionMdPath(path);
@@ -425,7 +428,8 @@ public class PostService {
                                 task.getTitle(),
                                 descMd,
                                 task.getSortOrder(),
-                                task.getMaxScore()
+                                task.getMaxScore(),
+                                task.getDifficulty() != null ? task.getDifficulty() : "MEDIUM"
                         );
                     })
                     .toList();
@@ -516,7 +520,15 @@ public class PostService {
         
         Category cat = categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new NotFoundException("Category", categoryId));
-        
+        if (cat.isAdminOnly()) {
+            boolean isAdmin = userId != null && memberRepository.findById(userId)
+                    .map(m -> m.getRole() == UserRole.ADMIN)
+                    .orElse(false);
+            if (!isAdmin) {
+                throw new IllegalArgumentException("관리자 전용 카테고리에는 관리자만 등록할 수 있습니다.");
+            }
+        }
+
         Post post = new Post(finalTitle, null);
         post.changeCategoryId(categoryId);
         post.changeIsNotice(isNotice != null ? isNotice : false);
@@ -777,6 +789,13 @@ public class PostService {
             throw new NotFoundException("Post not found: " + id);
         }
 
+        // 메타데이터 실제 변경 여부 판단용 (댓글만 추가된 경우 등 글 수정이 없으면 버전 이력 남기지 않음)
+        String origTitle = post.getTitle();
+        Long origCategoryId = post.getCategoryId();
+        Boolean origIsNotice = post.getIsNotice();
+        String origSummaryTitle = post.getSummaryTitle();
+        Integer origMaxScore = post.getMaxScore();
+
         // 1) title 갱신
         if (req.title() != null && !req.title().isBlank()) {
             post.changeTitle(req.title());
@@ -821,13 +840,20 @@ public class PostService {
                 storage.overwrite(mdPath, req.markdown());
             }
             
-            // 내용 변경 시 새 버전 저장
+            // 내용 변경 시에만 새 버전 저장
             String versionTitle = req.title() != null && !req.title().isBlank() ? req.title() : post.getTitle();
             savePostVersion(post.getId(), versionTitle, req.markdown(), true, post.getUpdatedBy());
         } else {
-            // 제목/카테고리 등 메타데이터만 변경된 경우에도 버전 저장
-            String versionTitle = req.title() != null && !req.title().isBlank() ? req.title() : post.getTitle();
-            savePostVersionForMetadataChange(post.getId(), versionTitle, post.getUpdatedBy());
+            // 제목/카테고리 등 메타데이터가 실제로 변경된 경우에만 버전 저장 (댓글만 추가된 PATCH는 이력 남기지 않음)
+            boolean metadataActuallyChanged = (req.title() != null && !req.title().isBlank() && !req.title().trim().equals(origTitle != null ? origTitle.trim() : ""))
+                    || (req.categoryId() != null && !req.categoryId().equals(origCategoryId))
+                    || (req.isNotice() != null && !req.isNotice().equals(origIsNotice))
+                    || (req.summaryTitle() != null && !req.summaryTitle().equals(origSummaryTitle))
+                    || (req.maxScore() != null && post.getPostKind() == PostKind.ASSIGNMENT && !req.maxScore().equals(origMaxScore));
+            if (metadataActuallyChanged) {
+                String versionTitle = req.title() != null && !req.title().isBlank() ? req.title() : post.getTitle();
+                savePostVersionForMetadataChange(post.getId(), versionTitle, post.getUpdatedBy());
+            }
         }
 
         // 4) ASSIGNMENT인 경우 세부 실습 목록 동기화 (배점 합 = maxScore)
@@ -845,7 +871,7 @@ public class PostService {
             for (AssignmentTaskItemRequest t : req.tasks()) {
                 String descMd = t.descriptionMarkdown() != null ? t.descriptionMarkdown() : "";
                 if (t.taskId() == null) {
-                    AssignmentTask task = new AssignmentTask(post.getId(), t.title(), sortOrder++, t.maxScore());
+                    AssignmentTask task = new AssignmentTask(post.getId(), t.title(), sortOrder++, t.maxScore(), t.difficulty());
                     AssignmentTask savedTask = assignmentTaskRepository.save(task);
                     String path = storage.writeAssignmentTaskDescription(post.getId(), savedTask.getId(), descMd);
                     savedTask.changeDescriptionMdPath(path);
@@ -857,6 +883,7 @@ public class PostService {
                     task.changeTitle(t.title());
                     task.changeSortOrder(sortOrder++);
                     task.changeMaxScore(t.maxScore());
+                    if (t.difficulty() != null) task.changeDifficulty(t.difficulty());
                     String path = storage.writeAssignmentTaskDescription(post.getId(), task.getId(), descMd);
                     task.changeDescriptionMdPath(path);
                     assignmentTaskRepository.save(task);

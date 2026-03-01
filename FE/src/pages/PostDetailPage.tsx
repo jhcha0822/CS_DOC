@@ -5,6 +5,8 @@ import { ApiError } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import "@uiw/react-markdown-preview/markdown.css";
+import { markdownPreviewImageComponents } from "../components/MarkdownImageWithModal";
+import ErrorModal from "../components/ErrorModal";
 
 function formatKST(iso: string) {
     const d = new Date(iso);
@@ -384,17 +386,6 @@ export default function PostDetailPage() {
             >
                 {loading && <div style={{ opacity: 0.8 }}>불러오는 중...</div>}
 
-                {error && (
-                    <div>
-                        <div style={{ color: "var(--app-error)", fontWeight: 800 }}>{error}</div>
-                        <div style={{ marginTop: 10, opacity: 0.8 }}>
-                            <Link to={listUrl} style={{ color: "var(--app-link)" }}>
-                                목록으로 돌아가기 →
-                            </Link>
-                        </div>
-                    </div>
-                )}
-
                 {!loading && !error && post && (
                     <div>
 
@@ -488,7 +479,7 @@ export default function PostDetailPage() {
                             }}
                         >
                             {bodyText ? (
-                                <MarkdownPreview source={bodyText} />
+                                <MarkdownPreview source={bodyText} components={markdownPreviewImageComponents} />
                             ) : (
                                 <span style={{ opacity: 0.6 }}>본문이 없습니다.</span>
                             )}
@@ -690,6 +681,7 @@ export default function PostDetailPage() {
                     )}
                 </div>
             </div>
+            <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         </div>
     );
 }

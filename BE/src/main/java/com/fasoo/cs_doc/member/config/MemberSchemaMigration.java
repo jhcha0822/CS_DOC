@@ -6,15 +6,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * members 테이블에 name 컬럼이 없으면 추가하는 마이그레이션.
- * H2 콘솔 접근이 어려운 경우를 대비하여 애플리케이션 시작 시 자동으로 실행.
+ * members 테이블에 name 컬럼이 없으면 추가하는 마이그레이션. H2 전용.
  */
 @Component
+@Profile("test")
 @Order(1) // UserDataLoader보다 먼저 실행
 public class MemberSchemaMigration implements ApplicationRunner {
 

@@ -6,16 +6,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * assignment_task 테이블에 max_score 컬럼이 없으면 추가하는 마이그레이션.
- * H2 콘솔 접근이 어려운 경우를 대비하여 애플리케이션 시작 시 자동으로 실행.
+ * assignment_task 테이블에 max_score 컬럼이 없으면 추가하는 마이그레이션. H2 전용.
  */
 @Component
-@Order(3) // 다른 마이그레이션 이후에 실행
+@Profile("test")
+@Order(3)
 public class AssignmentTaskSchemaMigration implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AssignmentTaskSchemaMigration.class);
@@ -46,6 +47,16 @@ public class AssignmentTaskSchemaMigration implements ApplicationRunner {
                 log.info("assignment_task 테이블에 max_score 컬럼 추가 완료.");
             } else {
                 log.debug("assignment_task 테이블에 max_score 컬럼이 이미 존재합니다.");
+            }
+
+            // difficulty 컬럼 추가 (난이도: HIGH, MEDIUM, LOW)
+            String checkDifficultySql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'ASSIGNMENT_TASK' AND COLUMN_NAME = 'DIFFICULTY'";
+            Long diffCount = ((Number) entityManager.createNativeQuery(checkDifficultySql).getSingleResult()).longValue();
+            if (diffCount == 0) {
+                log.info("assignment_task 테이블에 difficulty 컬럼을 추가합니다...");
+                entityManager.createNativeQuery("ALTER TABLE assignment_task ADD COLUMN difficulty VARCHAR(20)").executeUpdate();
+                entityManager.createNativeQuery("UPDATE assignment_task SET difficulty = 'MEDIUM' WHERE difficulty IS NULL").executeUpdate();
+                log.info("assignment_task 테이블에 difficulty 컬럼 추가 완료.");
             }
         } catch (Exception e) {
             log.error("assignment_task 테이블 스키마 마이그레이션 중 오류 발생", e);

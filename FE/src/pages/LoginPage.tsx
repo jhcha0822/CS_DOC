@@ -1,96 +1,125 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { fetchUsers, type UserItem } from "../lib/api";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { login } from "../lib/api";
 import { setCurrentUser } from "../lib/auth";
 import { ApiError } from "../lib/api";
+import ErrorModal from "../components/ErrorModal";
 
 export default function LoginPage() {
     const navigate = useNavigate();
-    const [users, setUsers] = useState<UserItem[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => {
-        async function loadUsers() {
-            try {
-                const list = await fetchUsers();
-                setUsers(list || []);
-            } catch (e) {
-                const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "사용자 목록을 불러오지 못했습니다.";
-                setError(msg);
-            } finally {
-                setLoading(false);
-            }
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const id = username.trim();
+        if (!id || !password) {
+            setError("아이디와 비밀번호를 입력하세요.");
+            return;
         }
-        loadUsers();
-    }, []);
-
-    const handleLogin = (user: UserItem) => {
-        // UserItem을 UserInfo로 변환 (name 포함)
-        setCurrentUser({
-            id: user.id,
-            username: user.username,
-            name: user.name,
-            role: user.role,
-        });
-        navigate("/posts");
+        setLoading(true);
+        setError(null);
+        try {
+            const user = await login(id, password);
+            setCurrentUser({
+                id: user.id,
+                username: user.username,
+                name: user.name,
+                role: user.role,
+            });
+            navigate("/posts");
+        } catch (e) {
+            const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "로그인에 실패했습니다.";
+            setError(msg);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
-        <div style={{ maxWidth: 500, padding: 20 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>사용자 선택</div>
-            <div style={{ fontSize: 13, opacity: 0.7, marginBottom: 20 }}>
-                사용자를 선택하여 로그인하세요.
-            </div>
-
-            {error && (
-                <div style={{ padding: 12, marginBottom: 16, background: "#fee2e2", color: "#991b1b", borderRadius: 8 }}>
-                    {error}
-                </div>
-            )}
-
-            {loading ? (
-                <div style={{ padding: 20, textAlign: "center" }}>불러오는 중...</div>
-            ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {users.map((user) => (
-                        <button
-                            key={user.id}
-                            onClick={() => handleLogin(user)}
+        <div
+            style={{
+                minHeight: "100vh",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 24,
+            }}
+        >
+            <div
+                style={{
+                    transform: "scale(1.5)",
+                    transformOrigin: "center center",
+                    maxWidth: 400,
+                    width: "100%",
+                    padding: 40,
+                }}
+            >
+                <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 32, background: "#fff" }}>
+                <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24, textAlign: "center" }}>로그인</h1>
+                <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={{ fontSize: 14, fontWeight: 500 }}>아이디</span>
+                        <input
+                            type="text"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            placeholder="아이디"
+                            autoComplete="username"
+                            disabled={loading}
                             style={{
-                                padding: "12px 16px",
-                                borderRadius: 10,
-                                border: "1px solid #444",
-                                background: "#fff",
-                                color: "#111",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                                textAlign: "left",
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
+                                padding: "10px 12px",
+                                border: "1px solid #d1d5db",
+                                borderRadius: 8,
+                                fontSize: 14,
                             }}
-                        >
-                            <span>{user.username}</span>
-                            <span style={{
-                                padding: "4px 8px",
-                                borderRadius: 4,
-                                background: user.role === "ADMIN" ? "#dbeafe" : "#f3f4f6",
-                                color: user.role === "ADMIN" ? "#1e40af" : "#374151",
-                                fontSize: 12,
-                                fontWeight: 600,
-                            }}>
-                                {user.role}
-                            </span>
-                        </button>
-                    ))}
-                    {users.length === 0 && (
-                        <div style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>
-                            등록된 사용자가 없습니다. 사용자 관리 페이지에서 사용자를 추가하세요.
-                        </div>
-                    )}
+                        />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <span style={{ fontSize: 14, fontWeight: 500 }}>비밀번호</span>
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="비밀번호"
+                            autoComplete="current-password"
+                            disabled={loading}
+                            style={{
+                                padding: "10px 12px",
+                                border: "1px solid #d1d5db",
+                                borderRadius: 8,
+                                fontSize: 14,
+                            }}
+                        />
+                    </label>
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        style={{
+                            padding: "12px 16px",
+                            borderRadius: 8,
+                            border: "none",
+                            background: "#2563eb",
+                            color: "#fff",
+                            fontSize: 16,
+                            fontWeight: 600,
+                            cursor: loading ? "not-allowed" : "pointer",
+                            opacity: loading ? 0.7 : 1,
+                        }}
+                    >
+                        {loading ? "로그인 중..." : "로그인"}
+                    </button>
+                </form>
+                <p style={{ marginTop: 20, textAlign: "center", fontSize: 14 }}>
+                    <Link to="/signup" style={{ color: "#2563eb", textDecoration: "underline" }}>
+                        회원가입
+                    </Link>
+                </p>
                 </div>
-            )}
+            </div>
+            <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         </div>
     );
 }

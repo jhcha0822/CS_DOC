@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useSearchParams, createSearchParams } from "react-router-dom";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import "@uiw/react-markdown-preview/markdown.css";
+import { markdownPreviewImageComponents } from "../components/MarkdownImageWithModal";
 import MDEditor from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
 import {
@@ -22,6 +23,8 @@ import {
     type TaskScoreItem,
 } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
+import ErrorModal from "../components/ErrorModal";
+import AssignmentRequestFormModal from "../components/AssignmentRequestFormModal";
 
 
 function formatDateTime(iso: string | null) {
@@ -31,6 +34,14 @@ function formatDateTime(iso: string | null) {
     const pad = (n: number) => String(n).padStart(2, "0");
     const year = String(d.getFullYear()).slice(-2); // 마지막 2자리만
     return `${year}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function formatKST(iso: string | null) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function getApiBase(): string {
@@ -63,6 +74,7 @@ function parseAttachments(json: string | null): { url: string; name: string | nu
 
 export default function AssignmentPage() {
     const { id } = useParams<{ id: string }>();
+    const [sp] = useSearchParams();
     const navigate = useNavigate();
     const postId = id ? parseInt(id, 10) : null;
     const viewCountIncrementedRef = useRef<number | null>(null);
@@ -93,6 +105,8 @@ export default function AssignmentPage() {
     const [pendingReviewBySub, setPendingReviewBySub] = useState<Record<number, Record<number, { score: number; feedbackText: string }>>>({});
     /** 평가 수정 모드인 제출 ID (GRADED인데 관리자가 수정 클릭 시) */
     const [editingReviewSubmissionId, setEditingReviewSubmissionId] = useState<number | null>(null);
+    /** 실습 결과 작성 요청 모달 (관리자용) */
+    const [requestFormModalOpen, setRequestFormModalOpen] = useState(false);
 
     useEffect(() => {
         fetchCategories()
@@ -381,19 +395,31 @@ export default function AssignmentPage() {
         [insertImageIntoAnswerDraft]
     );
 
+    const listSearchParams = useCallback(() => {
+        const p: Record<string, string> = {};
+        if (sp.get("cat")) p.cat = sp.get("cat")!;
+        if (sp.get("q")) p.q = sp.get("q")!;
+        return p;
+    }, [sp]);
+
     if (loading) return <div className="p-4">로딩 중...</div>;
-    if (error || !data) return <div className="p-4 text-red-600">{error ?? "데이터 없음"}</div>;
+    if (error || !data) {
+        return (
+            <div style={{ maxWidth: "100%", minWidth: 0 }}>
+                <div className="p-4">과제를 불러올 수 없습니다.</div>
+                <ErrorModal open={!!error} message={error ?? "데이터 없음"} onClose={() => setError(null)} />
+            </div>
+        );
+    }
 
     const mySub = data.mySubmission;
     const isAdmin = user?.role === "ADMIN";
     /** 모든 답변 목록은 평가자(관리자) 권한에만 노출. 피평가자는 본인 답변만 '내 답변'에서 확인·수정 */
     const canViewAll = isAdmin;
-    const canEdit = Boolean(
-        user && data && (user.id === data.createdBy || user.role === "ADMIN")
-    );
 
     const breadcrumbPath = data.categoryId ? getBreadcrumbPath(data.categoryId) : [];
-    const editUrl = `/posts/${postId}/edit`;
+    const listUrl = `/posts?${createSearchParams(listSearchParams()).toString()}`;
+    const editUrl = postId != null ? `/posts/${postId}/edit?${createSearchParams(listSearchParams()).toString()}` : "/posts";
 
     /** 세부 실습 라벨: "세부 실습 N" 하나만 표시. 제목이 기본 패턴(세부 실습 \d+)이면 번호만, 그 외 커스텀 제목일 때만 " · 제목" 추가 */
     const taskLabel = (idx: number, title: string | undefined) => {
@@ -406,6 +432,7 @@ export default function AssignmentPage() {
     };
 
     return (
+        <>
         <div style={{ maxWidth: "100%", minWidth: 0 }}>
             <div
                 style={{
@@ -444,9 +471,84 @@ export default function AssignmentPage() {
                     )}
                 </div>
 
+                {/* 작성/수정 시각 메타데이터 - 버튼 왼쪽에 배치 (게시글 상세와 동일) */}
+                {!loading && !error && data && (
+                    <div style={{ textAlign: "right", fontSize: 13, color: "#9ca3af", lineHeight: 1.6, marginRight: 12, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                        <div>작성 {formatKST(data.createdAt)}</div>
+                        <div>수정 {formatKST(data.updatedAt ?? data.createdAt)}</div>
+                    </div>
+                )}
+
                 <div className="header-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
+                    {isAdmin && (
+                        <>
+                            <button
+                                onClick={() => setRequestFormModalOpen(true)}
+                                style={{
+                                    minHeight: 42,
+                                    padding: "10px 14px",
+                                    borderRadius: 6,
+                                    border: "1px solid #059669",
+                                    fontSize: 14,
+                                    color: "#059669",
+                                    background: "#fff",
+                                    fontWeight: 500,
+                                    boxSizing: "border-box",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                실습 결과 요청
+                            </button>
+                            <button
+                                onClick={handleDelete}
+                                disabled={deleting}
+                                style={{
+                                    width: 90,
+                                    minHeight: 42,
+                                    padding: "10px 14px",
+                                    borderRadius: 6,
+                                    border: "none",
+                                    fontSize: 14,
+                                    color: "#fff",
+                                    background: deleting ? "#9ca3af" : "#dc2626",
+                                    fontWeight: 500,
+                                    boxSizing: "border-box",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    cursor: deleting ? "not-allowed" : "pointer",
+                                }}
+                            >
+                                {deleting ? "삭제 중..." : "삭제"}
+                            </button>
+                            <Link
+                                to={editUrl}
+                                style={{
+                                    width: 90,
+                                    minHeight: 42,
+                                    padding: "10px 14px",
+                                    borderRadius: 6,
+                                    border: "none",
+                                    textDecoration: "none",
+                                    fontSize: 14,
+                                    color: "#fff",
+                                    background: "#3B82F6",
+                                    fontWeight: 500,
+                                    boxSizing: "border-box",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                }}
+                            >
+                                수정
+                            </Link>
+                        </>
+                    )}
                     <Link
-                        to="/posts"
+                        to={listUrl}
                         style={{
                             width: 90,
                             minHeight: 42,
@@ -468,69 +570,70 @@ export default function AssignmentPage() {
                 </div>
             </div>
 
-            {/* 실습 내용 및 상세 정보 */}
+            {/* 실습 내용 및 상세 정보 - 게시글 상세와 동일한 content-card 스타일 */}
             {!loading && !error && data && (
-                <section style={{ marginTop: "24px", marginBottom: "24px" }}>
+                <section style={{ marginTop: 16, marginBottom: 24 }}>
                     <div
+                        className="content-card"
                         style={{
+                            padding: 20,
+                            borderRadius: 6,
                             border: "1px solid #e5e7eb",
-                            borderRadius: "4px",
                             backgroundColor: "#fff",
-                            overflow: "hidden",
+                            color: "#111827",
+                            minHeight: 120,
                         }}
                     >
-                        {/* 본문 영역 */}
-                        <div style={{ padding: "20px" }}>
-                            {/* 첫 번째 정보 행 */}
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "24px", marginBottom: "24px" }}>
-                                <div>
-                                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                                        등록자
-                                    </div>
-                                    <div style={{ fontSize: "14px", color: "#111827" }}>
-                                        {data.createdByName || "-"}
-                                    </div>
+                        {/* 첫 번째 정보 행 */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24, marginBottom: 24 }}>
+                            <div>
+                                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                                    등록자
                                 </div>
-                                <div>
-                                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                                        등록 일시
-                                    </div>
-                                    <div style={{ fontSize: "14px", color: "#111827" }}>
-                                        {data.createdAt ? formatDateTime(data.createdAt) : "-"}
-                                    </div>
+                                <div style={{ fontSize: 14, color: "#111827" }}>
+                                    {data.createdByName || "-"}
                                 </div>
-                                {data.maxScore && (
-                                    <div>
-                                        <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>
-                                            배점
-                                        </div>
-                                        <div style={{ fontSize: "14px", color: "#111827" }}>
-                                            {data.maxScore}점
-                                        </div>
-                                    </div>
-                                )}
                             </div>
+                            <div>
+                                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                                    등록 일시
+                                </div>
+                                <div style={{ fontSize: 14, color: "#111827" }}>
+                                    {data.createdAt ? formatDateTime(data.createdAt) : "-"}
+                                </div>
+                            </div>
+                            {data.maxScore != null && (
+                                <div>
+                                    <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                                        배점
+                                    </div>
+                                    <div style={{ fontSize: 14, color: "#111827" }}>
+                                        {data.maxScore}점
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
-                            {/* 상세 정보 섹션 */}
-                            {data.problemMarkdown && (
-                                <div style={{ marginBottom: "24px" }}>
-                                    <div style={{ fontSize: "14px", fontWeight: 600, color: "#111827", marginBottom: "12px" }}>
-                                        실습 내용 (개요)
+                        {/* 실습 내용 (개요) */}
+                        {data.problemMarkdown && (
+                            <div style={{ marginBottom: 24 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", marginBottom: 12 }}>
+                                    실습 내용 (개요)
+                                </div>
+                                <div
+                                    style={{
+                                        padding: 16,
+                                        backgroundColor: "var(--app-bg)",
+                                        borderRadius: 6,
+                                        border: "1px solid #e5e7eb",
+                                    }}
+                                >
+                                    <div className="markdown-preview" data-color-mode="light">
+                                        <MarkdownPreview components={markdownPreviewImageComponents} source={data.problemMarkdown} />
                                     </div>
-                                    <div
-                                        style={{
-                                            padding: "12px",
-                                            backgroundColor: "#f9fafb",
-                                            borderRadius: "4px",
-                                            border: "1px solid #e5e7eb",
-                                        }}
-                                    >
-                                        <div className="markdown-preview" data-color-mode="light">
-                                            <MarkdownPreview source={data.problemMarkdown} />
-                                        </div>
-                                    </div>
+                                </div>
                                     {parseAttachments(data.postAttachments ?? null).length > 0 && (
-                                        <div style={{ marginTop: 12, padding: 12, background: "#f5f5f5", borderRadius: 8, border: "1px solid #e5e7eb" }}>
+                                        <div style={{ marginTop: 12, padding: 12, background: "#f5f5f5", borderRadius: 6, border: "1px solid #e5e7eb" }}>
                                             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>첨부파일</div>
                                             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                                                 {parseAttachments(data.postAttachments ?? null).map((item, idx) => {
@@ -548,60 +651,69 @@ export default function AssignmentPage() {
                                 </div>
                             )}
 
-                            {/* 세부 실습 목록 (내용 MD + 배점) */}
-                            {displayTasks.length > 0 && (
-                                <div>
-                                    <div style={{ fontSize: "14px", fontWeight: 600, color: "#111827", marginBottom: "12px" }}>
-                                        세부 실습
-                                    </div>
-                                    {displayTasks.map((task, idx) => (
-                                        <div
-                                            key={task.taskId ?? idx}
-                                            style={{
-                                                marginBottom: "20px",
-                                                padding: "16px",
-                                                backgroundColor: "#fff",
-                                                borderRadius: "8px",
-                                                border: "1px solid #e5e7eb",
-                                            }}
-                                        >
-                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                                                <span style={{ fontSize: "14px", fontWeight: 600, color: "#111827" }}>
-                                                    {taskLabel(idx, task.title)}
-                                                </span>
-                                                <span style={{ fontSize: "13px", color: "#6b7280" }}>
-                                                    세부 실습 배점: <strong>{task.maxScore}점</strong>
-                                                </span>
-                                            </div>
-                                            {task.descriptionMarkdown ? (
-                                                <div
-                                                    style={{
-                                                        padding: "12px",
-                                                        backgroundColor: "#f9fafb",
-                                                        borderRadius: "4px",
-                                                        border: "1px solid #e5e7eb",
-                                                    }}
-                                                >
-                                                    <div className="markdown-preview" data-color-mode="light">
-                                                        <MarkdownPreview source={task.descriptionMarkdown} />
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div style={{ fontSize: "13px", color: "#9ca3af" }}>내용 없음</div>
-                                            )}
-                                        </div>
-                                    ))}
+                        {/* 세부 실습 목록 */}
+                        {displayTasks.length > 0 && (
+                            <div>
+                                <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", marginBottom: 12 }}>
+                                    세부 실습
                                 </div>
-                            )}
-                        </div>
+                                {displayTasks.map((task, idx) => (
+                                    <div
+                                        key={task.taskId ?? idx}
+                                        style={{
+                                            marginBottom: 20,
+                                            padding: 16,
+                                            backgroundColor: "#fff",
+                                            borderRadius: 6,
+                                            border: "1px solid #e5e7eb",
+                                        }}
+                                    >
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                                            <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>
+                                                {taskLabel(idx, task.title)}
+                                            </span>
+                                            <span style={{ fontSize: 13, color: "#6b7280" }}>
+                                                세부 실습 배점: <strong>{task.maxScore}점</strong>
+                                            </span>
+                                        </div>
+                                        {task.descriptionMarkdown ? (
+                                            <div
+                                                style={{
+                                                    padding: 16,
+                                                    backgroundColor: "var(--app-bg)",
+                                                    borderRadius: 6,
+                                                    border: "1px solid #e5e7eb",
+                                                }}
+                                            >
+                                                <div className="markdown-preview" data-color-mode="light">
+                                                    <MarkdownPreview components={markdownPreviewImageComponents} source={task.descriptionMarkdown} />
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div style={{ fontSize: 13, color: "#9ca3af" }}>내용 없음</div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </section>
             )}
 
             {/* 내 답변 (피평가자 제출) - 관리자 계정에는 미노출 */}
             {!loading && !error && data && !isAdmin && (
-                <section style={{ marginTop: "24px", marginBottom: "24px" }}>
-                    <h2 className="text-lg font-semibold mb-3" style={{ color: "#111827" }}>내 답변</h2>
+                <section style={{ marginTop: 24, marginBottom: 24 }}>
+                    <div
+                        className="content-card"
+                        style={{
+                            padding: 20,
+                            borderRadius: 6,
+                            border: "1px solid #e5e7eb",
+                            backgroundColor: "#fff",
+                            color: "#111827",
+                        }}
+                    >
+                        <h2 className="text-lg font-semibold mb-3" style={{ color: "#111827", marginTop: 0 }}>내 답변</h2>
                     {!user ? (
                         <p style={{ color: "#6b7280" }}>로그인 후 제출할 수 있습니다.</p>
                     ) : !mySub ? (
@@ -625,7 +737,7 @@ export default function AssignmentPage() {
                             </button>
                         </div>
                     ) : (mySub.status === "DRAFT" || (mySub.status === "SUBMITTED" && isEditingAfterSubmit)) ? (
-                        <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 16, backgroundColor: "#fff" }}>
+                        <div style={{ padding: 0 }}>
                             <input
                                 ref={imageInputRef}
                                 type="file"
@@ -809,31 +921,41 @@ export default function AssignmentPage() {
                             )}
                         </div>
                     ) : (
-                        <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 16, backgroundColor: "#f9fafb" }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "24px", marginBottom: 16 }}>
-                                <div>
-                                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>등록자</div>
-                                    <div style={{ fontSize: "14px", color: "#111827" }}>{user?.name ?? "사용자"}</div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>등록일시</div>
-                                    <div style={{ fontSize: "14px", color: "#111827" }}>{mySub.submittedAt ? formatDateTime(mySub.submittedAt) : "-"}</div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>상태</div>
-                                    <div style={{ fontSize: "14px", color: "#111827" }}>
-                                        {mySub.status === "DRAFT" && "임시저장"}
-                                        {mySub.status === "SUBMITTED" && "제출완료"}
-                                        {mySub.status === "GRADED" && "평가완료"}
+                        <div style={{ padding: 0 }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+                                <div
+                                    style={{
+                                        display: "grid",
+                                        gridTemplateColumns: mySub.status === "GRADED" && mySub.review ? "repeat(4, 1fr)" : "repeat(3, 1fr)",
+                                        gap: "24px",
+                                        flex: "1 1 auto",
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>등록자</div>
+                                        <div style={{ fontSize: "14px", color: "#111827" }}>{user?.name ?? "사용자"}</div>
                                     </div>
+                                    <div>
+                                        <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>등록일시</div>
+                                        <div style={{ fontSize: "14px", color: "#111827" }}>{mySub.submittedAt ? formatDateTime(mySub.submittedAt) : "-"}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>상태</div>
+                                        <div style={{ fontSize: "14px", color: "#111827" }}>
+                                            {mySub.status === "DRAFT" && "임시저장"}
+                                            {mySub.status === "SUBMITTED" && "제출완료"}
+                                            {mySub.status === "GRADED" && "평가완료"}
+                                        </div>
+                                    </div>
+                                    {mySub.status === "GRADED" && mySub.review && (
+                                        <div>
+                                            <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>총점</div>
+                                            <div style={{ fontSize: "14px", color: "#111827", fontWeight: 500 }}>
+                                                {mySub.review.score}/{data.maxScore ?? 100}점
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            </div>
-                            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
-                                {mySub.review && (
-                                    <span style={{ fontSize: "14px", fontWeight: 500, color: "#111827" }}>
-                                        총점: {mySub.review.score}/{data.maxScore ?? 100}점
-                                    </span>
-                                )}
                                 {mySub.status === "SUBMITTED" && (
                                     <button
                                         type="button"
@@ -847,6 +969,7 @@ export default function AssignmentPage() {
                                             fontSize: 13,
                                             fontWeight: 500,
                                             cursor: "pointer",
+                                            flexShrink: 0,
                                         }}
                                     >
                                         수정
@@ -857,28 +980,56 @@ export default function AssignmentPage() {
                                 displayTasks.map((task, idx) => {
                                     const ta = (mySub.taskAnswers ?? []).find((a) => a.taskId === task.taskId);
                                     const md = ta?.answerMarkdown ?? "";
+                                    const tr = mySub.review?.taskReviews?.find((r) => r.taskId === task.taskId);
                                     return (
-                                        <div key={task.taskId} style={{ marginBottom: 16 }}>
-                                            <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-                                                {taskLabel(idx, task.title)}
+                                        <div
+                                            key={task.taskId}
+                                            style={{
+                                                marginBottom: idx < displayTasks.length - 1 ? 24 : 0,
+                                                padding: 16,
+                                                backgroundColor: "var(--app-bg)",
+                                                borderRadius: 6,
+                                                border: "1px solid #e5e7eb",
+                                            }}
+                                        >
+                                            <div style={{ fontSize: 14, fontWeight: 600, color: "#111827", marginBottom: 10 }}>{taskLabel(idx, task.title)}</div>
+                                            <div style={{ marginBottom: tr ? 12 : 0 }}>
+                                                <div className="markdown-preview text-sm" style={{ padding: 12, background: "#fff", borderRadius: 6, border: "1px solid #e5e7eb" }} data-color-mode="light">
+                                                    {md.trim() ? <MarkdownPreview components={markdownPreviewImageComponents} source={md} /> : <p style={{ color: "#9ca3af" }}>답안 없음</p>}
+                                                </div>
                                             </div>
-                                            <div className="markdown-preview" data-color-mode="light" style={{ padding: 12, background: "#fff", borderRadius: 6, border: "1px solid #e5e7eb" }}>
-                                                {md.trim() ? <MarkdownPreview source={md} /> : <p style={{ color: "#9ca3af" }}>내용 없음</p>}
-                                            </div>
+                                            {mySub.status === "GRADED" && tr && (
+                                                <div style={{ padding: 12, background: "#fff", borderRadius: 6, border: "1px solid #e5e7eb" }}>
+                                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                                        <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>평가</span>
+                                                        <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{tr.score}/{tr.maxScore}점</span>
+                                                    </div>
+                                                    {tr.feedbackText && <p style={{ fontSize: 13, color: "#374151", marginTop: 4 }}>{tr.feedbackText}</p>}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })
                             ) : (
-                                <div className="markdown-preview" data-color-mode="light">
-                                    {(mySub.answerMarkdown ?? "").trim() ? (
-                                        <MarkdownPreview source={mySub.answerMarkdown ?? ""} />
-                                    ) : (
-                                        <p style={{ color: "#6b7280" }}>제출된 답안 내용이 없습니다.</p>
+                                <>
+                                    <div className="markdown-preview" data-color-mode="light">
+                                        {(mySub.answerMarkdown ?? "").trim() ? (
+                                            <MarkdownPreview components={markdownPreviewImageComponents} source={mySub.answerMarkdown ?? ""} />
+                                        ) : (
+                                            <p style={{ color: "#6b7280" }}>제출된 답안 내용이 없습니다.</p>
+                                        )}
+                                    </div>
+                                    {mySub.status === "GRADED" && mySub.review && (
+                                        <div style={{ marginTop: 12, padding: 12, background: "#fff", borderRadius: 6, border: "1px solid #e5e7eb" }}>
+                                            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>평가</div>
+                                            <p style={{ fontSize: 13, fontWeight: 500, color: "#111827" }}>총점: {mySub.review.score}/{data.maxScore ?? 100}점</p>
+                                            {mySub.review.feedbackText && <p style={{ fontSize: 13, color: "#374151", marginTop: 4 }}>{mySub.review.feedbackText}</p>}
+                                        </div>
                                     )}
-                                </div>
+                                </>
                             )}
                             {parseAttachments(mySub.attachments).length > 0 && (
-                                <div style={{ marginTop: 12, padding: 12, background: "#f5f5f5", borderRadius: 8, border: "1px solid #e5e7eb" }}>
+                                <div style={{ marginTop: 12, padding: 12, background: "#f9fafb", borderRadius: 6, border: "1px solid #e5e7eb" }}>
                                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>첨부파일</div>
                                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                                         {parseAttachments(mySub.attachments).map((item, idx) => {
@@ -893,29 +1044,9 @@ export default function AssignmentPage() {
                                     </div>
                                 </div>
                             )}
-                            {mySub.review && (
-                                <div style={{ marginTop: 16, padding: 12, border: "1px solid #fdba74", borderRadius: 8, backgroundColor: "#fff" }}>
-                                    <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>평가</h3>
-                                    <p style={{ fontSize: 14 }}>총점: {mySub.review.score}/{data.maxScore ?? 100}점</p>
-                                    {mySub.review.taskReviews && mySub.review.taskReviews.length > 0 ? (
-                                        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-                                            {mySub.review.taskReviews.map((tr) => {
-                                                const taskTitle = data.tasks?.find((t) => t.taskId === tr.taskId)?.title ?? `세부 실습 (${tr.taskId})`;
-                                                return (
-                                                    <div key={tr.taskId} style={{ padding: 8, background: "#f9fafb", borderRadius: 6, border: "1px solid #e5e7eb" }}>
-                                                        <p style={{ fontSize: 13, fontWeight: 500 }}>{taskTitle}: {tr.score}/{tr.maxScore}점</p>
-                                                        {tr.feedbackText && <p style={{ marginTop: 4, fontSize: 13, color: "#374151" }}>{tr.feedbackText}</p>}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    ) : mySub.review.feedbackText ? (
-                                        <p style={{ marginTop: 8, fontSize: 14, color: "#374151" }}>{mySub.review.feedbackText}</p>
-                                    ) : null}
-                                </div>
-                            )}
                         </div>
                     )}
+                    </div>
                 </section>
             )}
 
@@ -927,29 +1058,69 @@ export default function AssignmentPage() {
                         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                             {data.allSubmissions.map((sub) => (
                             <div key={sub.submissionId} style={{ border: "2px solid #e5e7eb", borderRadius: "8px", padding: "16px", backgroundColor: "#fff" }}>
-                                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "24px", marginBottom: 12 }}>
-                                    <div>
-                                        <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>등록자</div>
-                                        <div style={{ fontSize: "14px", color: "#111827" }}>{sub.submitterName ?? `사용자 ${sub.submitterId}`}</div>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>등록일시</div>
-                                        <div style={{ fontSize: "14px", color: "#111827" }}>{sub.submittedAt ? formatDateTime(sub.submittedAt) : "-"}</div>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>상태</div>
-                                        <div style={{ fontSize: "14px", color: "#111827" }}>
-                                            {sub.status === "DRAFT" && "임시저장"}
-                                            {sub.status === "SUBMITTED" && "제출완료"}
-                                            {sub.status === "GRADED" && "평가완료"}
+                                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
+                                    <div
+                                        style={{
+                                            display: "grid",
+                                            gridTemplateColumns: sub.status === "GRADED" && sub.review ? "repeat(4, 1fr)" : "repeat(3, 1fr)",
+                                            gap: "24px",
+                                            flex: "1 1 auto",
+                                        }}
+                                    >
+                                        <div>
+                                            <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>등록자</div>
+                                            <div style={{ fontSize: "14px", color: "#111827" }}>{sub.submitterName ?? `사용자 ${sub.submitterId}`}</div>
                                         </div>
+                                        <div>
+                                            <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>등록일시</div>
+                                            <div style={{ fontSize: "14px", color: "#111827" }}>{sub.submittedAt ? formatDateTime(sub.submittedAt) : "-"}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>상태</div>
+                                            <div style={{ fontSize: "14px", color: "#111827" }}>
+                                                {sub.status === "DRAFT" && "임시저장"}
+                                                {sub.status === "SUBMITTED" && "제출완료"}
+                                                {sub.status === "GRADED" && "평가완료"}
+                                            </div>
+                                        </div>
+                                        {sub.status === "GRADED" && sub.review && (
+                                            <div>
+                                                <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "4px" }}>총점</div>
+                                                <div style={{ fontSize: "14px", color: "#111827", fontWeight: 500 }}>
+                                                    {sub.review.score}/{data.maxScore ?? 100}점
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
+                                    {isAdmin && sub.status === "GRADED" && editingReviewSubmissionId !== sub.submissionId && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setEditingReviewSubmissionId(sub.submissionId);
+                                                if (sub.review?.taskReviews?.length) {
+                                                    const bySub: Record<number, { score: number; feedbackText: string }> = {};
+                                                    for (const tr of sub.review.taskReviews) {
+                                                        bySub[tr.taskId] = { score: tr.score ?? 0, feedbackText: tr.feedbackText ?? "" };
+                                                    }
+                                                    setPendingReviewBySub((prev) => ({ ...prev, [sub.submissionId]: bySub }));
+                                                }
+                                            }}
+                                            style={{
+                                                padding: "6px 12px",
+                                                borderRadius: 6,
+                                                border: "1px solid #3B82F6",
+                                                background: "#fff",
+                                                color: "#3B82F6",
+                                                fontSize: 13,
+                                                fontWeight: 500,
+                                                cursor: "pointer",
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            평가 수정
+                                        </button>
+                                    )}
                                 </div>
-                                {sub.review && (
-                                    <div style={{ marginBottom: 12, fontSize: "14px", fontWeight: 500, color: "#111827" }}>
-                                        총점: {sub.review.score}/{data.maxScore ?? 100}점
-                                    </div>
-                                )}
                                 {displayTasks.length > 0 && (sub.taskAnswers?.length ?? 0) > 0 ? (
                                     <div className="mb-2" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                         {displayTasks.map((task, idx) => {
@@ -961,40 +1132,42 @@ export default function AssignmentPage() {
                                                 const bySub = pendingReviewBySub[sub.submissionId];
                                                 if (bySub && task.taskId in bySub) return bySub[task.taskId];
                                                 if (sub.status === "GRADED" && editingReviewSubmissionId === sub.submissionId && tr)
-                                                    return { score: tr.score, feedbackText: tr.feedbackText ?? "" };
+                                                    return { score: tr.score ?? 0, feedbackText: tr.feedbackText ?? "" };
                                                 return { score: 0, feedbackText: "" };
                                             })();
                                             const taskMaxDisplay = task.maxScore > 0 ? task.maxScore : 100;
                                             return (
                                                 <div key={task.taskId} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 16, backgroundColor: "#fff" }}>
                                                     <div style={{ fontSize: 13, fontWeight: 600, color: "#111827", marginBottom: 10 }}>{taskLabel(idx, task.title)}</div>
-                                                    <div style={{ marginBottom: 12 }}>
-                                                        <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>제출 답안</div>
+                                                    <div style={{ marginBottom: 10 }}>
                                                         <div className="markdown-preview text-sm" style={{ padding: 12, background: "#f9fafb", borderRadius: 6, border: "1px solid #e5e7eb" }} data-color-mode="light">
-                                                            {md.trim() ? <MarkdownPreview source={md} /> : <p style={{ color: "#9ca3af" }}>답안 없음</p>}
+                                                            {md.trim() ? <MarkdownPreview components={markdownPreviewImageComponents} source={md} /> : <p style={{ color: "#9ca3af" }}>답안 없음</p>}
                                                         </div>
                                                     </div>
                                                     {isEditingThis ? (
-                                                        <div style={{ padding: 12, background: "#fffbeb", borderRadius: 6, border: "1px solid #fdba74" }}>
-                                                            <div style={{ fontSize: 12, color: "#92400e", marginBottom: 6 }}>평가</div>
-                                                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                                                                <label style={{ fontSize: 13, color: "#374151" }}>점수:</label>
-                                                                <input
-                                                                    type="number"
-                                                                    min={0}
-                                                                    max={10000}
-                                                                    value={draft.score}
-                                                                    onChange={(e) => {
-                                                                        const v = e.target.value === "" ? 0 : Math.max(0, Math.min(10000, Number(e.target.value)));
-                                                                        setPendingReviewBySub((prev) => {
-                                                                            const bySub = { ...(prev[sub.submissionId] ?? {}) };
-                                                                            bySub[task.taskId] = { ...(bySub[task.taskId] ?? { score: 0, feedbackText: "" }), score: isNaN(v) ? draft.score : v };
-                                                                            return { ...prev, [sub.submissionId]: bySub };
-                                                                        });
-                                                                    }}
-                                                                    style={{ width: 72, padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 6, fontSize: 14 }}
-                                                                />
-                                                                <span style={{ fontSize: 13, color: "#6b7280" }}>/ {taskMaxDisplay}점</span>
+                                                        <div style={{ padding: 12, background: "#f9fafb", borderRadius: 6, border: "1px solid #e5e7eb" }}>
+                                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                                                <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>평가</span>
+                                                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                                                    <input
+                                                                        type="number"
+                                                                        min={0}
+                                                                        max={10000}
+                                                                        value={draft.score ?? 0}
+                                                                        onFocus={(e) => e.currentTarget.select()}
+                                                                        onChange={(e) => {
+                                                                            const v = e.target.value === "" ? 0 : Math.max(0, Math.min(10000, Number(e.target.value)));
+                                                                            const safeScore = typeof draft.score === "number" ? draft.score : 0;
+                                                                            setPendingReviewBySub((prev) => {
+                                                                                const bySub = { ...(prev[sub.submissionId] ?? {}) };
+                                                                                bySub[task.taskId] = { ...(bySub[task.taskId] ?? { score: 0, feedbackText: "" }), score: isNaN(v) ? safeScore : v };
+                                                                                return { ...prev, [sub.submissionId]: bySub };
+                                                                            });
+                                                                        }}
+                                                                        style={{ width: 72, padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: 6, fontSize: 14 }}
+                                                                    />
+                                                                    <span style={{ fontSize: 13, color: "#6b7280" }}>/ {taskMaxDisplay}점</span>
+                                                                </div>
                                                             </div>
                                                             <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>평가 내용</label>
                                                             <textarea
@@ -1011,9 +1184,11 @@ export default function AssignmentPage() {
                                                             />
                                                         </div>
                                                     ) : tr ? (
-                                                        <div style={{ padding: 12, background: "#fffbeb", borderRadius: 6, border: "1px solid #fdba74" }}>
-                                                            <div style={{ fontSize: 12, color: "#92400e", marginBottom: 4 }}>평가</div>
-                                                            <p style={{ fontSize: 13, fontWeight: 500, color: "#111827" }}>{tr.score}/{tr.maxScore}점</p>
+                                                        <div style={{ padding: 12, background: "#f9fafb", borderRadius: 6, border: "1px solid #e5e7eb" }}>
+                                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                                                <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>평가</span>
+                                                                <span style={{ fontSize: 14, fontWeight: 600, color: "#111827" }}>{tr.score}/{tr.maxScore}점</span>
+                                                            </div>
                                                             {tr.feedbackText && <p style={{ fontSize: 13, color: "#374151", marginTop: 4 }}>{tr.feedbackText}</p>}
                                                         </div>
                                                     ) : null}
@@ -1023,7 +1198,7 @@ export default function AssignmentPage() {
                                     </div>
                                 ) : (
                                     <div className="markdown-preview text-sm border border-gray-200 rounded-lg p-3 bg-gray-50 mb-2" data-color-mode="light">
-                                        <MarkdownPreview source={sub.answerMarkdown ?? ""} />
+                                        <MarkdownPreview components={markdownPreviewImageComponents} source={sub.answerMarkdown ?? ""} />
                                         {!sub.answerMarkdown && <p className="text-gray-500">답안 없음</p>}
                                     </div>
                                 )}
@@ -1077,35 +1252,6 @@ export default function AssignmentPage() {
                                         </button>
                                     </div>
                                 )}
-                                {isAdmin && sub.status === "GRADED" && editingReviewSubmissionId !== sub.submissionId && (
-                                    <div style={{ marginTop: 12 }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setEditingReviewSubmissionId(sub.submissionId);
-                                                if (sub.review?.taskReviews?.length) {
-                                                    const bySub: Record<number, { score: number; feedbackText: string }> = {};
-                                                    for (const tr of sub.review.taskReviews) {
-                                                        bySub[tr.taskId] = { score: tr.score, feedbackText: tr.feedbackText ?? "" };
-                                                    }
-                                                    setPendingReviewBySub((prev) => ({ ...prev, [sub.submissionId]: bySub }));
-                                                }
-                                            }}
-                                            style={{
-                                                padding: "8px 14px",
-                                                borderRadius: 6,
-                                                border: "1px solid #3B82F6",
-                                                background: "#fff",
-                                                color: "#3B82F6",
-                                                fontWeight: 500,
-                                                fontSize: 13,
-                                                cursor: "pointer",
-                                            }}
-                                        >
-                                            평가 수정
-                                        </button>
-                                    </div>
-                                )}
                                 {sub.review && !isAdmin && (
                                     <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
                                         평가자: {sub.review.reviewerSummary?.name ?? sub.review.reviewerName ?? "-"}
@@ -1120,8 +1266,8 @@ export default function AssignmentPage() {
                                             tasks={displayTasks}
                                             onSave={handleSaveReview}
                                             saving={saving}
-                                            initialTaskScores={sub.review?.taskReviews?.map((tr) => ({ taskId: tr.taskId, score: tr.score, feedbackText: tr.feedbackText ?? "" }))}
-                                            initialScore={sub.review?.score}
+                                            initialTaskScores={sub.review?.taskReviews?.map((tr) => ({ taskId: tr.taskId, score: tr.score ?? 0, feedbackText: tr.feedbackText ?? "" }))}
+                                            initialScore={sub.review?.score ?? undefined}
                                             initialFeedbackText={sub.review?.feedbackText ?? undefined}
                                         />
                                     </div>
@@ -1135,6 +1281,16 @@ export default function AssignmentPage() {
                 </section>
             )}
         </div>
+        <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
+        {data && postId != null && (
+            <AssignmentRequestFormModal
+                open={requestFormModalOpen}
+                postId={postId}
+                postTitle={data.title ?? ""}
+                onClose={() => setRequestFormModalOpen(false)}
+            />
+        )}
+        </>
     );
 }
 
@@ -1191,7 +1347,7 @@ function ReviewForm({
     return (
         <div
             style={{
-                border: "2px solid #fdba74",
+                border: "1px solid #e5e7eb",
                 borderRadius: "8px",
                 padding: "16px",
                 backgroundColor: "#fff",
@@ -1212,6 +1368,7 @@ function ReviewForm({
                                         min={0}
                                         max={10000}
                                         value={s.score}
+                                        onFocus={(e) => e.currentTarget.select()}
                                         onChange={(e) => {
                                             const v = e.target.value === "" ? 0 : Number(e.target.value);
                                             setTaskScores((prev) => {
@@ -1270,6 +1427,7 @@ function ReviewForm({
                             min={0}
                             max={max}
                             value={score}
+                            onFocus={(e) => e.currentTarget.select()}
                             onChange={(e) => {
                                 const v = e.target.value === "" ? 0 : Number(e.target.value);
                                 setScore(isNaN(v) ? score : Math.max(0, Math.min(max, v)));

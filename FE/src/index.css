@@ -194,10 +194,19 @@ html[data-theme="dark"] .app-layout .file-action-label {
   border-color: #666 !important;
 }
 
-/* Markdown preview (detail page): images fit container */
+/* Markdown preview (detail page): images fit container, limit size, click to open modal */
 .markdown-preview img {
-  max-width: 100%;
+  max-width: min(100%, 720px);
+  max-height: 70vh;
+  width: auto;
   height: auto;
+  object-fit: contain;
+  cursor: pointer;
+  border-radius: 6px;
+  vertical-align: middle;
+}
+.markdown-preview img:hover {
+  opacity: 0.92;
 }
 
 /* MD 에디터/프리뷰가 브라우저 테마를 따르도록 배경·텍스트 통일 */

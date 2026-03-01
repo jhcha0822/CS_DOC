@@ -28,8 +28,8 @@ public class Memo {
     @Column(nullable = false, length = TITLE_MAX_LENGTH)
     private String title;
 
-    /** 본문. Plain text (MD 아님). */
-    @Column(nullable = true, columnDefinition = "CLOB")
+    /** 본문. Plain text (MD 아님). length 10000 → H2: VARCHAR(10000), MSSQL: NVARCHAR(MAX) 등으로 매핑 */
+    @Column(nullable = true, length = 10000)
     private String body;
 
     /** 이미지 URL 목록 JSON. [{"url":"...","name":"..."}] 형식, 최대 10개 */

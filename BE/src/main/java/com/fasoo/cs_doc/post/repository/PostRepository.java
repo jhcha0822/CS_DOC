@@ -59,4 +59,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     
     // 카테고리 ID와 그 하위 카테고리들을 포함하는 쿼리 (카테고리 계층 구조 지원)
     // 재귀적으로 하위 카테고리를 찾기 위해 Java 코드에서 처리하므로 여기서는 단순 쿼리만 제공
+
+    /** 실습(과제) 목록 - 관리자 채점 조회용 */
+    List<Post> findByDeletedFalseAndPostKindOrderByCreatedAtDesc(PostKind postKind);
 }
