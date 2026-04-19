@@ -322,25 +322,55 @@ export default function PostVersionHistoryPage() {
                                     >
                                         처음
                                     </button>
-                                    {Array.from({ length: totalPages }, (_, i) => i)
-                                        .filter((n) => n >= Math.max(0, historyPage - 2) && n <= Math.min(totalPages - 1, historyPage + 2))
-                                        .map((n) => (
-                                            <button
-                                                key={n}
-                                                type="button"
-                                                onClick={() => setHistoryPage(n)}
-                                                style={{
-                                                    padding: "8px 12px",
-                                                    border: "1px solid #444",
-                                                    borderRadius: 6,
-                                                    background: n === historyPage ? "#2563eb" : "#fff",
-                                                    color: n === historyPage ? "#fff" : "#111",
-                                                    cursor: "pointer",
-                                                }}
-                                            >
-                                                {n + 1}
-                                            </button>
-                                        ))}
+                                    {(() => {
+                                        const PAGE_GROUP = 10;
+                                        const groupIndex = Math.floor(historyPage / PAGE_GROUP);
+                                        const startPage = groupIndex * PAGE_GROUP;
+                                        const endPage = Math.min(startPage + PAGE_GROUP, totalPages);
+                                        const hasPrevBlock = startPage > 0;
+                                        const hasNextBlock = endPage < totalPages;
+                                        return (
+                                            <>
+                                                {hasPrevBlock && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setHistoryPage(startPage - 1)}
+                                                        style={{ padding: "8px 12px", border: "1px solid #444", borderRadius: 6, background: "#fff", cursor: "pointer" }}
+                                                        title="이전 10페이지"
+                                                    >
+                                                        …
+                                                    </button>
+                                                )}
+                                                {Array.from({ length: endPage - startPage }, (_, i) => startPage + i).map((n) => (
+                                                    <button
+                                                        key={n}
+                                                        type="button"
+                                                        onClick={() => setHistoryPage(n)}
+                                                        style={{
+                                                            padding: "8px 12px",
+                                                            border: "1px solid #444",
+                                                            borderRadius: 6,
+                                                            background: n === historyPage ? "#2563eb" : "#fff",
+                                                            color: n === historyPage ? "#fff" : "#111",
+                                                            cursor: "pointer",
+                                                        }}
+                                                    >
+                                                        {n + 1}
+                                                    </button>
+                                                ))}
+                                                {hasNextBlock && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setHistoryPage(endPage)}
+                                                        style={{ padding: "8px 12px", border: "1px solid #444", borderRadius: 6, background: "#fff", cursor: "pointer" }}
+                                                        title="다음 10페이지"
+                                                    >
+                                                        …
+                                                    </button>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
                                     <button
                                         type="button"
                                         onClick={() => setHistoryPage(Math.max(0, totalPages - 1))}

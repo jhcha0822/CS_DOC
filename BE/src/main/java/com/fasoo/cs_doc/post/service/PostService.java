@@ -266,6 +266,17 @@ public class PostService {
             } else {
                 page = postRepository.findByIsNoticeFalseAndDeletedFalseAndTitleContainingIgnoreCase(kw, largePageable);
             }
+            // 전체 조회 시에도 legacy(categoryId=null, category enum만 있는) 게시글 병합 (유실 방지)
+            List<Category> allCats = categoryRepository.findAllByOrderBySortOrderAsc();
+            for (Category c : allCats) {
+                PostCategory legacy = categoryCodeToPostCategory(c.getCode());
+                if (legacy == null) continue;
+                List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategory(legacy, largePageable)
+                        .getContent().stream()
+                        .filter(p -> p.getCategoryId() == null && !p.getDeleted())
+                        .toList();
+                legacyPosts.addAll(batch);
+            }
         }
 
         List<PostListItemResponse> normalItems = page.getContent().stream()
@@ -287,14 +298,20 @@ public class PostService {
         log.debug("PostService.list - noticeCount={}, normalItems.size()={}, legacyItems.size()={}, categoryId={}, keyword={}", 
                 noticeCount, normalItems.size(), uniqueLegacyItems.size(), categoryId, kw);
         
-        // 페이징 처리 (합쳐진 리스트에서 페이지 크기만큼만 가져오기)
-        int start = (isFirstPage && noticeCount > 0) 
-                ? Math.max(0, pageable.getPageNumber() * pageable.getPageSize() - noticeCount)
-                : pageable.getPageNumber() * pageable.getPageSize();
-        int pageSize = (isFirstPage && noticeCount > 0)
-                ? Math.max(1, pageable.getPageSize() - noticeCount)
-                : pageable.getPageSize();
-        int end = Math.min(start + pageSize, combinedItems.size());
+        // 페이징 처리 (합쳐진 리스트에서 페이지 크기만큼만 가져오기. 1페이지에 공지가 있으면 그만큼 일반 글 수 감소)
+        int pageSize = pageable.getPageSize();
+        int start;
+        int sliceSize;
+        if (isFirstPage && noticeCount > 0) {
+            sliceSize = Math.max(1, pageSize - noticeCount);
+            start = 0;
+        } else {
+            sliceSize = pageSize;
+            start = (noticeCount > 0)
+                    ? (pageSize - noticeCount) + (pageable.getPageNumber() - 1) * pageSize
+                    : pageable.getPageNumber() * pageSize;
+        }
+        int end = Math.min(start + sliceSize, combinedItems.size());
         List<PostListItemResponse> pagedItems = start < combinedItems.size() 
                 ? combinedItems.subList(Math.max(0, start), end)
                 : List.of();
@@ -308,10 +325,10 @@ public class PostService {
             allItems = pagedItems;
         }
         
-        // 전체 개수 (메모리 페이징을 위해 combinedItems.size() 사용)
+        // 전체 개수: 공지 + 일반(combined). totalPages는 전체 기준으로 일관되게 계산
         long totalCombinedElements = combinedItems.size();
         long totalElements = noticeCount + totalCombinedElements;
-        int totalPages = (int) Math.ceil((double) totalCombinedElements / pageable.getPageSize());
+        int totalPages = (int) Math.ceil((double) totalElements / pageable.getPageSize());
 
         return PageResponse.of(
                 allItems,
@@ -458,10 +475,10 @@ public class PostService {
 
     @Transactional
     public void incrementViewCount(Long id) {
-        Post post = postRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("Post not found: " + id));
-        post.incrementViewCount();
-        postRepository.save(post);
+        if (postRepository.findById(id).isEmpty()) {
+            throw new NotFoundException("Post not found: " + id);
+        }
+        postRepository.incrementViewCountById(id);
     }
 
     @Transactional(readOnly = true)

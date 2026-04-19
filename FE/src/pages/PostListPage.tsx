@@ -204,12 +204,15 @@ export default function PostListPage() {
     const pageNumbers = useMemo(() => {
         const total = Math.max(1, totalPages);
         const current = Math.min(Math.max(1, pageFromUrl), total);
-        const delta = 2;
-        const start = Math.max(1, current - delta);
-        const end = Math.min(total, current + delta);
+        const PAGE_GROUP = 10;
+        const groupIndex = Math.floor((current - 1) / PAGE_GROUP);
+        const startPage = groupIndex * PAGE_GROUP + 1;
+        const endPage = Math.min(startPage + PAGE_GROUP - 1, total);
         const nums: number[] = [];
-        for (let i = start; i <= end; i++) nums.push(i);
-        return { nums, total, current };
+        for (let i = startPage; i <= endPage; i++) nums.push(i);
+        const hasPrevBlock = startPage > 1;
+        const hasNextBlock = endPage < total;
+        return { nums, total, current, startPage, endPage, hasPrevBlock, hasNextBlock };
     }, [totalPages, pageFromUrl]);
 
     return (
@@ -489,6 +492,16 @@ export default function PostListPage() {
                     >
                         처음
                     </button>
+                    {pageNumbers.hasPrevBlock && (
+                        <button
+                            type="button"
+                            onClick={() => setPage(pageNumbers.startPage - 1)}
+                            style={{ padding: "8px 12px", border: "none", borderRadius: 6, background: "#f3f4f6", color: "#374151", cursor: "pointer" }}
+                            title="이전 10페이지"
+                        >
+                            …
+                        </button>
+                    )}
                     {pageNumbers.nums.map((n) => (
                         <button
                             key={n}
@@ -506,6 +519,16 @@ export default function PostListPage() {
                             {n}
                         </button>
                     ))}
+                    {pageNumbers.hasNextBlock && (
+                        <button
+                            type="button"
+                            onClick={() => setPage(pageNumbers.endPage + 1)}
+                            style={{ padding: "8px 12px", border: "none", borderRadius: 6, background: "#f3f4f6", color: "#374151", cursor: "pointer" }}
+                            title="다음 10페이지"
+                        >
+                            …
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => setPage(totalPages)}

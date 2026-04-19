@@ -1,8 +1,11 @@
-function getApiBase(): string {
-    const env = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE?.toString?.();
-    if (env) return env;
-    if (typeof window !== "undefined") return window.location.origin;
-    return "http://localhost:8080";
+/** API 서버 기준 URL. 개발 시 localhost, 배포 시 .env.production의 VITE_API_BASE 또는 기본값 사용. 마크다운 이미지(/uploads/) 등에서 사용 */
+export function getApiBase(): string {
+    const meta = import.meta as { env?: { DEV?: boolean; VITE_API_BASE?: string } };
+    const envUrl = meta.env?.VITE_API_BASE?.toString?.();
+    if (envUrl) return envUrl;
+    if (meta.env?.DEV) return "http://localhost:8080";
+    if (typeof window !== "undefined") return "http://192.168.11.181:8080";
+    return "http://192.168.11.181:8080";
 }
 const API_BASE = getApiBase();
 
@@ -204,7 +207,8 @@ export async function incrementViewCount(id: number): Promise<void> {
 }
 
 /**
- * 이미지 업로드 (Ctrl+V 붙여넣기용). 서버에 저장 후 URL 반환. 본문에는 URL만 저장되어 반응성 유지.
+ * 이미지 업로드 (Ctrl+V 붙여넣기용). 서버에 저장 후 절대 URL 반환.
+ * 서버가 /uploads/xxx 반환 시 getApiBase()와 합쳐 저장용 절대 URL로 변환.
  */
 export async function uploadImage(file: File): Promise<{ url: string }> {
     const url = new URL("/api/upload/image", API_BASE);
@@ -222,7 +226,10 @@ export async function uploadImage(file: File): Promise<{ url: string }> {
             text
         );
     }
-    return res.json() as Promise<{ url: string }>;
+    const data = (await res.json()) as { url: string };
+    const base = getApiBase().replace(/\/$/, "");
+    const fullUrl = data.url.startsWith("/") ? base + data.url : data.url;
+    return { url: fullUrl };
 }
 
 /**

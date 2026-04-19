@@ -168,14 +168,14 @@ export default function PostEditorPage() {
 
     const insertImageUrl = useCallback(
         (url: string, start?: number, end?: number) => {
-            const imageMd = `\n![](${url})\n\n`;
+            const imageMd = `![](${url})`;
             setMarkdown((prev) => {
                 if (start !== undefined && start >= 0) {
                     const rangeEnd = end ?? start;
                     return prev.slice(0, start) + imageMd + prev.slice(rangeEnd);
                 }
                 const trimmed = prev.trim();
-                const suffix = trimmed ? "\n\n" : "";
+                const suffix = trimmed ? "\n" : "";
                 return trimmed + suffix + imageMd;
             });
         },
@@ -401,13 +401,14 @@ export default function PostEditorPage() {
                     setImageUploading(true);
                     try {
                         const { url } = await uploadImage(file);
-                        const imageMd = `\n![](${url})\n\n`;
+                        const imageMd = `![](${url})`;
                         setAssignmentTasks((prev) =>
-                            prev.map((t, i) =>
-                                i === taskIndex
-                                    ? { ...t, descriptionMarkdown: (t.descriptionMarkdown ?? "") + imageMd }
-                                    : t
-                            )
+                            prev.map((t, i) => {
+                                if (i !== taskIndex) return t;
+                                const prevMd = (t.descriptionMarkdown ?? "").trimEnd();
+                                const sep = prevMd ? "\n" : "";
+                                return { ...t, descriptionMarkdown: prevMd + sep + imageMd };
+                            })
                         );
                     } catch (err) {
                         const msg =

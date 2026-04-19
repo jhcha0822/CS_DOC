@@ -5,6 +5,9 @@ import com.fasoo.cs_doc.post.domain.PostKind;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -62,4 +65,9 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     /** 실습(과제) 목록 - 관리자 채점 조회용 */
     List<Post> findByDeletedFalseAndPostKindOrderByCreatedAtDesc(PostKind postKind);
+
+    /** 조회수만 증가 (updatedAt 변경 없음. 상세 조회 시 수정 시각이 바뀌는 현상 방지) */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Post p SET p.viewCount = COALESCE(p.viewCount, 0) + 1 WHERE p.id = :id")
+    int incrementViewCountById(@Param("id") Long id);
 }

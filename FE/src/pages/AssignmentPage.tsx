@@ -339,13 +339,20 @@ export default function AssignmentPage() {
         [postId, data?.mySubmission, displayTasks, answerDraft, taskAnswerDrafts]
     );
 
-    /** 답안 에디터에 이미지 URL 삽입. 실습 개요와 동일: 기존 내용·줄바꿈을 건드리지 않고 끝에 \n![](url)\n\n 만 붙임 */
+    /** 답안 에디터에 이미지 URL 삽입. 한 줄 ![](url) 형식으로 삽입 */
     const insertImageIntoAnswerDraft = useCallback((url: string, target: "single" | number) => {
-        const imageMd = `\n![](${url})\n\n`;
+        const imageMd = `![](${url})`;
         if (target === "single") {
-            setAnswerDraft((prev) => prev + imageMd);
+            setAnswerDraft((prev) => {
+                const p = (prev ?? "").trimEnd();
+                return p + (p ? "\n" : "") + imageMd;
+            });
         } else {
-            setTaskAnswerDrafts((prev) => ({ ...prev, [target]: (prev[target] ?? "") + imageMd }));
+            setTaskAnswerDrafts((prev) => {
+                const p = (prev[target] ?? "").trimEnd();
+                const sep = p ? "\n" : "";
+                return { ...prev, [target]: p + sep + imageMd };
+            });
         }
     }, []);
 

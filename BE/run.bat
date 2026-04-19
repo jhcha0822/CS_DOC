@@ -6,6 +6,7 @@ REM ============================================
 REM CS_DOC 실제 운용 실행 (BE + FE 동시 기동)
 REM 이 배치 파일은 D:\jhcha0822\CS_DOC 에 두고 실행하세요.
 REM JDK 17: 로컬 JDK 폴더를 서버 D:\jhcha0822\CS_DOC\jdk17 에 복사 후 사용.
+REM ※ data-init 프로필 미사용 → 재기동 시 기존 데이터 유지됨.
 REM ============================================
 
 set "ROOT=D:\jhcha0822\CS_DOC"
@@ -44,15 +45,15 @@ if not exist "FE_DIST\index.html" (
     set "FE_SKIP=1"
 )
 
-REM 1) 백엔드 새 창에서 실행
+REM 1) 백엔드 새 CMD 창에서 실행 (창 닫으면 BE 종료)
 start "CS_DOC BE" cmd /k "set "JAVA_HOME=%JAVA_HOME%" && set "CS_DOC_BASE_DIR=%ROOT%" && set "CS_DOC_DB_USERNAME=%CS_DOC_DB_USERNAME%" && set "CS_DOC_DB_PASSWORD=%CS_DOC_DB_PASSWORD%" && set "CS_DOC_SERVER_PORT=%CS_DOC_SERVER_PORT%" && cd /d "%~dp0" && echo BE 시작 중... && "%JAVA_HOME%\bin\java.exe" -jar "%JAR_NAME%""
 
 REM BE 기동 대기
 timeout /t 3 /nobreak >nul
 
-REM 2) 프론트엔드 새 창에서 실행 (FE_DIST 있을 때만)
+REM 2) 프론트엔드 새 CMD 창에서 실행 (FE_DIST 있을 때만)
 if not defined FE_SKIP (
-    start "CS_DOC FE" cmd /k "cd /d "%~dp0" && echo FE 시작 중... && npx serve -s FE_DIST -l 5173"
+    start "CS_DOC FE" cmd /k "cd /d "%~dp0" && echo FE 시작 중... && npx --yes serve -s FE_DIST -l 5173"
     echo.
     echo [실행 중] BE: http://localhost:%CS_DOC_SERVER_PORT%  ^|  FE: http://localhost:5173
 ) else (
@@ -61,6 +62,6 @@ if not defined FE_SKIP (
 
 echo.
 echo 서비스 이용: 브라우저에서 FE 주소로 접속하세요.
-echo 종료하려면 각 창(CS_DOC BE, CS_DOC FE)을 닫으세요.
+echo 종료: 각 CMD 창(CS_DOC BE, CS_DOC FE)을 닫으세요.
 echo.
 pause
