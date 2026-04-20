@@ -21,6 +21,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -190,8 +191,12 @@ public class PostService {
                     pageable.getSort()
             );
         }
-        
-        Page<Post> page;
+
+        Sort listSort = pageable.getSort().isSorted()
+                ? pageable.getSort()
+                : Sort.by(Sort.Direction.DESC, "createdAt");
+
+        List<Post> normalPosts;
         List<Post> legacyPosts = new ArrayList<>();
 
         if (categoryId != null) {
@@ -222,20 +227,19 @@ public class PostService {
                         .ifPresent(legacyCategories::add);
             }
 
-            // category_id 기반 + legacy category(enum) 별도 조회 후 병합
-            Pageable largePageable = org.springframework.data.domain.PageRequest.of(0, 10000, pageable.getSort());
+            // category_id 기반 + legacy category(enum) 별도 조회 후 병합 (Sort만: DB TOP 상한으로 일부만 오는 문제 방지)
             if (kw == null || kw.isBlank()) {
                 // 공지사항 카테고리인 경우 공지사항도 포함하여 조회
                 if (isNoticeCategory) {
-                    page = postRepository.findByDeletedFalseAndCategoryIdIn(targetCategoryIds, largePageable);
+                    normalPosts = postRepository.findByDeletedFalseAndCategoryIdIn(targetCategoryIds, listSort);
                 } else if (postKind != null) {
-                    page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndPostKind(targetCategoryIds, postKind, largePageable);
+                    normalPosts = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndPostKind(targetCategoryIds, postKind, listSort);
                 } else {
-                    page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdIn(targetCategoryIds, largePageable);
+                    normalPosts = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdIn(targetCategoryIds, listSort);
                 }
                 for (PostCategory legacyCategory : legacyCategories) {
-                    List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategory(legacyCategory, largePageable)
-                            .getContent().stream()
+                    List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategory(legacyCategory, listSort)
+                            .stream()
                             .filter(p -> p.getCategoryId() == null && !p.getDeleted())
                             .toList();
                     legacyPosts.addAll(batch);
@@ -243,15 +247,15 @@ public class PostService {
             } else {
                 // 공지사항 카테고리인 경우 공지사항도 포함하여 조회
                 if (isNoticeCategory) {
-                    page = postRepository.findByDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(targetCategoryIds, kw, largePageable);
+                    normalPosts = postRepository.findByDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(targetCategoryIds, kw, listSort);
                 } else if (postKind != null) {
-                    page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndPostKindAndTitleContainingIgnoreCase(targetCategoryIds, postKind, kw, largePageable);
+                    normalPosts = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndPostKindAndTitleContainingIgnoreCase(targetCategoryIds, postKind, kw, listSort);
                 } else {
-                    page = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(targetCategoryIds, kw, largePageable);
+                    normalPosts = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(targetCategoryIds, kw, listSort);
                 }
                 for (PostCategory legacyCategory : legacyCategories) {
-                    List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryAndTitleContainingIgnoreCase(legacyCategory, kw, largePageable)
-                            .getContent().stream()
+                    List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategoryAndTitleContainingIgnoreCase(legacyCategory, kw, listSort)
+                            .stream()
                             .filter(p -> p.getCategoryId() == null && !p.getDeleted())
                             .toList();
                     legacyPosts.addAll(batch);
@@ -259,27 +263,26 @@ public class PostService {
             }
         } else {
             // categoryId가 없으면 전체 조회 (공지사항 제외, 삭제되지 않은 것만)
-            // 메모리 페이징을 위해 전체 데이터를 먼저 가져옴
-            Pageable largePageable = org.springframework.data.domain.PageRequest.of(0, 10000, pageable.getSort());
+            // 메모리 페이징을 위해 전체 행을 Sort 기준으로 조회 (고정 TOP/페이지 상한 미사용)
             if (kw == null || kw.isBlank()) {
-                page = postRepository.findByIsNoticeFalseAndDeletedFalse(largePageable);
+                normalPosts = postRepository.findByIsNoticeFalseAndDeletedFalse(listSort);
             } else {
-                page = postRepository.findByIsNoticeFalseAndDeletedFalseAndTitleContainingIgnoreCase(kw, largePageable);
+                normalPosts = postRepository.findByIsNoticeFalseAndDeletedFalseAndTitleContainingIgnoreCase(kw, listSort);
             }
             // 전체 조회 시에도 legacy(categoryId=null, category enum만 있는) 게시글 병합 (유실 방지)
             List<Category> allCats = categoryRepository.findAllByOrderBySortOrderAsc();
             for (Category c : allCats) {
                 PostCategory legacy = categoryCodeToPostCategory(c.getCode());
                 if (legacy == null) continue;
-                List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategory(legacy, largePageable)
-                        .getContent().stream()
+                List<Post> batch = postRepository.findByIsNoticeFalseAndDeletedFalseAndCategory(legacy, listSort)
+                        .stream()
                         .filter(p -> p.getCategoryId() == null && !p.getDeleted())
                         .toList();
                 legacyPosts.addAll(batch);
             }
         }
 
-        List<PostListItemResponse> normalItems = page.getContent().stream()
+        List<PostListItemResponse> normalItems = normalPosts.stream()
                 .map(this::toListItem)
                 .toList();
         List<PostListItemResponse> legacyItems = legacyPosts.stream()

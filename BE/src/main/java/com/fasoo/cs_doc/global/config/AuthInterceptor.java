@@ -20,7 +20,8 @@ public class AuthInterceptor implements HandlerInterceptor {
             path.startsWith("/h2-console") ||
             path.startsWith("/swagger") ||
             path.startsWith("/v3/api-docs") ||
-            path.startsWith("/error")) {
+            path.startsWith("/error") ||
+            path.startsWith("/api/attachments/download")) {
             return true;
         }
 

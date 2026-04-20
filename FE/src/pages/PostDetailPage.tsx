@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, createSearchParams, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { fetchPost, fetchCategories, incrementViewCount, deletePost, getComments, createComment, updateComment, deleteComment, type PostDetail, type CategoryItem, type Comment } from "../lib/api";
+import { fetchPost, fetchCategories, incrementViewCount, deletePost, getComments, createComment, updateComment, deleteComment, buildAttachmentDownloadUrl, type PostDetail, type CategoryItem, type Comment } from "../lib/api";
 import { ApiError } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
 import MarkdownPreview from "@uiw/react-markdown-preview";
@@ -15,13 +15,6 @@ function formatKST(iso: string) {
     return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(
         d.getHours()
     )}:${pad(d.getMinutes())}`;
-}
-
-function getApiBase(): string {
-    const env = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE?.toString?.();
-    if (env) return env;
-    if (typeof window !== "undefined") return window.location.origin;
-    return "http://localhost:8080";
 }
 
 export default function PostDetailPage() {
@@ -428,13 +421,12 @@ export default function PostDetailPage() {
                                                         {valid.map((item: AttachItem, idx: number) => {
                                                             const cleanUrl = item.url.trim();
                                                             const fileName = item.name || cleanUrl.split("/").pop() || `첨부파일${idx + 1}`;
-                                                            const fullUrl = cleanUrl.startsWith("http") ? cleanUrl : `${getApiBase()}${cleanUrl}`;
+                                                            const downloadHref = buildAttachmentDownloadUrl(cleanUrl, fileName);
                                                             return (
                                                                 <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                                                     <span style={{ fontSize: 16 }}>📎</span>
                                                                     <a
-                                                                        href={fullUrl}
-                                                                        download={fileName}
+                                                                        href={downloadHref}
                                                                         target="_blank"
                                                                         rel="noopener noreferrer"
                                                                         style={{

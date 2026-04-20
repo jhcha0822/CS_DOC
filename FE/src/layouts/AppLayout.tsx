@@ -13,10 +13,18 @@ import {
     type GradingNotificationItem,
     type GradedNotificationItem,
 } from "../lib/api";
+import { SITE_NAME } from "../lib/site";
 
 export default function AppLayout() {
     const navigate = useNavigate();
     const location = useLocation();
+
+    useEffect(() => {
+        document.title =
+            location.pathname === "/admin/content-stats"
+                ? `게시글 통계 · ${SITE_NAME}`
+                : SITE_NAME;
+    }, [location.pathname]);
     const [unreadRequests, setUnreadRequests] = useState<AssignmentRequestItem[]>([]);
     const [unreadGrading, setUnreadGrading] = useState<GradingNotificationItem[]>([]);
     const [unreadGraded, setUnreadGraded] = useState<GradedNotificationItem[]>([]);

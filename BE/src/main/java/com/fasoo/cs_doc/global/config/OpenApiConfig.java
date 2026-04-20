@@ -12,8 +12,8 @@ public class OpenApiConfig {
     public OpenAPI openAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("CS_DOC API")
+                        .title("교육표준화 API")
                         .version("v1")
-                        .description("CS_DOC backend API specification"));
+                        .description("교육표준화 backend API specification"));
     }
 }

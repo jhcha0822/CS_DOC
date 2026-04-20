@@ -72,6 +72,8 @@ export default function MemoPage() {
     const [listWidth, setListWidth] = useState(450); // 기본 메모 목록 폭 (더 넓게)
     const isResizingRef = useRef(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const newMemoImageInputRef = useRef<HTMLInputElement>(null);
+    const editMemoImageInputRef = useRef<HTMLInputElement>(null);
     const [modalImage, setModalImage] = useState<{ url: string; name?: string } | null>(null);
 
     const loadList = useCallback(async () => {
@@ -621,8 +623,10 @@ export default function MemoPage() {
                             </div>
                         )}
                         {newImages.length < MAX_IMAGES && (
-                            <label style={{ display: "inline-block" }}>
-                                <span
+                            <div style={{ position: "relative", display: "inline-block" }}>
+                                <button
+                                    type="button"
+                                    onClick={() => newMemoImageInputRef.current?.click()}
                                     style={{
                                         padding: "6px 12px",
                                         border: "1px solid #444",
@@ -634,18 +638,35 @@ export default function MemoPage() {
                                     }}
                                 >
                                     이미지 추가
-                                </span>
+                                </button>
                                 <input
+                                    ref={newMemoImageInputRef}
                                     type="file"
                                     accept="image/*"
-                                    style={{ display: "none" }}
+                                    tabIndex={-1}
+                                    aria-hidden
+                                    style={{
+                                        position: "fixed",
+                                        left: -9999,
+                                        top: 0,
+                                        width: 1,
+                                        height: 1,
+                                        padding: 0,
+                                        margin: 0,
+                                        overflow: "hidden",
+                                        clip: "rect(0,0,0,0)",
+                                        whiteSpace: "nowrap",
+                                        border: 0,
+                                        opacity: 0,
+                                        pointerEvents: "none",
+                                    }}
                                     onChange={(e) => {
                                         const f = e.target.files?.[0];
                                         if (f) addImageToNew(f);
                                         e.target.value = "";
                                     }}
                                 />
-                            </label>
+                            </div>
                         )}
                         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                             <button
@@ -769,8 +790,10 @@ export default function MemoPage() {
                                     </div>
                                 )}
                                 {editImages.length < MAX_IMAGES && (
-                                    <label style={{ display: "inline-block", marginTop: 8 }}>
-                                        <span
+                                    <div style={{ position: "relative", display: "inline-block", marginTop: 8 }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => editMemoImageInputRef.current?.click()}
                                             style={{
                                                 padding: "6px 12px",
                                                 border: "1px solid var(--app-border)",
@@ -781,18 +804,35 @@ export default function MemoPage() {
                                             }}
                                         >
                                             이미지 추가
-                                        </span>
+                                        </button>
                                         <input
+                                            ref={editMemoImageInputRef}
                                             type="file"
                                             accept="image/*"
-                                            style={{ display: "none" }}
+                                            tabIndex={-1}
+                                            aria-hidden
+                                            style={{
+                                                position: "fixed",
+                                                left: -9999,
+                                                top: 0,
+                                                width: 1,
+                                                height: 1,
+                                                padding: 0,
+                                                margin: 0,
+                                                overflow: "hidden",
+                                                clip: "rect(0,0,0,0)",
+                                                whiteSpace: "nowrap",
+                                                border: 0,
+                                                opacity: 0,
+                                                pointerEvents: "none",
+                                            }}
                                             onChange={(e) => {
                                                 const f = e.target.files?.[0];
                                                 if (f) addImage(f);
                                                 e.target.value = "";
                                             }}
                                         />
-                                    </label>
+                                    </div>
                                 )}
                                 <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
                                     <button

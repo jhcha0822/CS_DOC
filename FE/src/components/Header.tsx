@@ -1,4 +1,5 @@
 import { getCurrentUser, logout } from "../lib/auth";
+import { SITE_NAME } from "../lib/site";
 import NotificationBell from "./NotificationBell";
 
 export default function Header() {
@@ -36,7 +37,7 @@ export default function Header() {
                         letterSpacing: "-0.02em",
                     }}
                 >
-                    CS_DOC
+                    {SITE_NAME}
                 </div>
             </div>
 

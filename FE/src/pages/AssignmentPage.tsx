@@ -17,6 +17,7 @@ import {
     addSubmissionAttachments,
     uploadImage,
     incrementViewCount,
+    buildAttachmentDownloadUrl,
     type AssignmentPageResponse,
     type AssignmentTaskItem,
     type CategoryItem,
@@ -42,13 +43,6 @@ function formatKST(iso: string | null) {
     if (Number.isNaN(d.getTime())) return "";
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function getApiBase(): string {
-    const env = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE?.toString?.();
-    if (env) return env;
-    if (typeof window !== "undefined") return window.location.origin;
-    return "http://localhost:8080";
 }
 
 /** 제출 첨부파일 JSON 파싱 → { url, name }[] */
@@ -644,10 +638,10 @@ export default function AssignmentPage() {
                                             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>첨부파일</div>
                                             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                                                 {parseAttachments(data.postAttachments ?? null).map((item, idx) => {
-                                                    const fullUrl = item.url.startsWith("http") ? item.url : `${getApiBase()}${item.url.startsWith("/") ? "" : "/"}${item.url}`;
                                                     const fileName = item.name || item.url.split("/").pop() || `첨부파일 ${idx + 1}`;
+                                                    const downloadHref = buildAttachmentDownloadUrl(item.url, fileName);
                                                     return (
-                                                        <a key={idx} href={fullUrl} download={fileName} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#3B82F6" }}>
+                                                        <a key={idx} href={downloadHref} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#3B82F6" }}>
                                                             📎 {fileName}
                                                         </a>
                                                     );
@@ -799,10 +793,10 @@ export default function AssignmentPage() {
                                                     {(list.length > 0 || pendingAttachmentNames.length > 0) && (
                                                         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
                                                             {list.map((item, idx) => {
-                                                                const fullUrl = item.url.startsWith("http") ? item.url : `${getApiBase()}${item.url.startsWith("/") ? "" : "/"}${item.url}`;
                                                                 const fileName = item.name || item.url.split("/").pop() || `첨부파일 ${idx + 1}`;
+                                                                const downloadHref = buildAttachmentDownloadUrl(item.url, fileName);
                                                                 return (
-                                                                    <a key={idx} href={fullUrl} download={fileName} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#3B82F6" }}>
+                                                                    <a key={idx} href={downloadHref} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#3B82F6" }}>
                                                                         📎 {fileName}
                                                                     </a>
                                                                 );
@@ -879,10 +873,10 @@ export default function AssignmentPage() {
                                                     {(list.length > 0 || pendingAttachmentNames.length > 0) && (
                                                         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
                                                             {list.map((item, idx) => {
-                                                                const fullUrl = item.url.startsWith("http") ? item.url : `${getApiBase()}${item.url.startsWith("/") ? "" : "/"}${item.url}`;
                                                                 const fileName = item.name || item.url.split("/").pop() || `첨부파일 ${idx + 1}`;
+                                                                const downloadHref = buildAttachmentDownloadUrl(item.url, fileName);
                                                                 return (
-                                                                    <a key={idx} href={fullUrl} download={fileName} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#3B82F6" }}>
+                                                                    <a key={idx} href={downloadHref} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#3B82F6" }}>
                                                                         📎 {fileName}
                                                                     </a>
                                                                 );
@@ -1040,10 +1034,10 @@ export default function AssignmentPage() {
                                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>첨부파일</div>
                                     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                                         {parseAttachments(mySub.attachments).map((item, idx) => {
-                                            const fullUrl = item.url.startsWith("http") ? item.url : `${getApiBase()}${item.url.startsWith("/") ? "" : "/"}${item.url}`;
                                             const fileName = item.name || item.url.split("/").pop() || `첨부파일 ${idx + 1}`;
+                                            const downloadHref = buildAttachmentDownloadUrl(item.url, fileName);
                                             return (
-                                                <a key={idx} href={fullUrl} download={fileName} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#3B82F6" }}>
+                                                <a key={idx} href={downloadHref} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#3B82F6" }}>
                                                     📎 {fileName}
                                                 </a>
                                             );
@@ -1214,10 +1208,10 @@ export default function AssignmentPage() {
                                         <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>첨부파일</div>
                                         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                                             {parseAttachments(sub.attachments).map((item, idx) => {
-                                                const fullUrl = item.url.startsWith("http") ? item.url : `${getApiBase()}${item.url.startsWith("/") ? "" : "/"}${item.url}`;
                                                 const fileName = item.name || item.url.split("/").pop() || `첨부파일 ${idx + 1}`;
+                                                const downloadHref = buildAttachmentDownloadUrl(item.url, fileName);
                                                 return (
-                                                    <a key={idx} href={fullUrl} download={fileName} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "#3B82F6" }}>
+                                                    <a key={idx} href={downloadHref} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "#3B82F6" }}>
                                                         📎 {fileName}
                                                     </a>
                                                 );

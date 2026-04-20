@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -74,6 +75,49 @@ public class AttachmentStorage {
     /**
      * 첨부파일 삭제 (게시글 삭제 시 사용)
      */
+    /**
+     * 저장된 첨부 URL(/uploads/attachments/파일명)에 대응하는 실제 파일 경로.
+     * 경로 조작 방지: attachments 디렉터리 밖으로 나가면 empty.
+     */
+    public Optional<Path> resolveAttachmentFile(String urlPath) {
+        if (urlPath == null || urlPath.isBlank()) {
+            return Optional.empty();
+        }
+        String path = urlPath.trim();
+        if (path.contains("://")) {
+            try {
+                java.net.URI u = java.net.URI.create(path);
+                path = u.getPath();
+            } catch (IllegalArgumentException e) {
+                return Optional.empty();
+            }
+        }
+        int q = path.indexOf('?');
+        if (q >= 0) {
+            path = path.substring(0, q);
+        }
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        String prefix = "/uploads/" + ATTACHMENTS_DIR + "/";
+        if (!path.startsWith(prefix)) {
+            return Optional.empty();
+        }
+        String filename = path.substring(prefix.length());
+        if (filename.isBlank() || filename.contains("..") || filename.indexOf('/') >= 0 || filename.indexOf('\\') >= 0) {
+            return Optional.empty();
+        }
+        Path base = uploadRoot.resolve(ATTACHMENTS_DIR).normalize();
+        Path file = base.resolve(filename).normalize();
+        if (!file.startsWith(base)) {
+            return Optional.empty();
+        }
+        if (!Files.isRegularFile(file)) {
+            return Optional.empty();
+        }
+        return Optional.of(file);
+    }
+
     public void deleteAttachments(List<String> urls) {
         if (urls == null || urls.isEmpty()) {
             return;

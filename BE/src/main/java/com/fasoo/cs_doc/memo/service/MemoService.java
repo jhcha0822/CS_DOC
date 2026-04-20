@@ -7,10 +7,13 @@ import com.fasoo.cs_doc.memo.domain.Memo;
 import com.fasoo.cs_doc.memo.dto.*;
 import com.fasoo.cs_doc.memo.repository.MemoRepository;
 import com.fasoo.cs_doc.post.service.AttachmentInfo;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +52,23 @@ public class MemoService {
         if (infos.size() > MAX_IMAGES) {
             throw new IllegalArgumentException("images must be at most " + MAX_IMAGES);
         }
+    }
+
+    /** JPQL/SQL LIKE 와일드카드·이스케이프 문자를 리터럴로만 취급 (DB별 Criteria escape 처리) */
+    private static String escapeLike(String raw) {
+        if (raw == null || raw.isEmpty()) return "";
+        return raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    private Specification<Memo> keywordSpec(String keywordTrimmed) {
+        String pattern = "%" + escapeLike(keywordTrimmed) + "%";
+        return (root, query, cb) -> {
+            Expression<String> title = root.get("title");
+            Expression<String> body = root.get("body");
+            Predicate titleMatch = cb.like(cb.lower(title), pattern.toLowerCase(), '\\');
+            Predicate bodyMatch = cb.like(body, pattern, '\\');
+            return cb.or(titleMatch, bodyMatch);
+        };
     }
 
     private List<AttachmentInfo> parseImageInfos(String json) {
@@ -101,8 +121,8 @@ public class MemoService {
         long total;
         if (keyword != null && !keyword.trim().isEmpty()) {
             String kw = keyword.trim();
-            pageResult = memoRepository.findByKeyword(kw, pageable);
-            total = memoRepository.countByKeyword(kw);
+            pageResult = memoRepository.findAll(keywordSpec(kw), pageable);
+            total = pageResult.getTotalElements();
         } else {
             pageResult = memoRepository.findAllBy(pageable);
             total = pageResult.getTotalElements();

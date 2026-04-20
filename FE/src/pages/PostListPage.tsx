@@ -144,8 +144,18 @@ export default function PostListPage() {
                 });
                 if (cancelled) return;
                 setItems(data.items ?? []);
-                setTotalElements(data.totalElements ?? 0);
-                setTotalPages(data.totalPages ?? 1);
+                const te = data.totalElements ?? 0;
+                // 요청한 페이지 크기 기준으로 총 페이지 수 계산 (응답의 size가 행 개수 등으로 잘못 올 경우 대비)
+                const sz = sizeFromUrl > 0 ? sizeFromUrl : 10;
+                const fromApi = data.totalPages;
+                const computed =
+                    te > 0 && sz > 0 ? Math.max(1, Math.ceil(te / sz)) : 0;
+                const merged =
+                    computed > 0
+                        ? Math.max(fromApi ?? 0, computed)
+                        : (fromApi ?? 0);
+                setTotalElements(te);
+                setTotalPages(merged);
             } catch (e) {
                 if (cancelled) return;
                 const msg =

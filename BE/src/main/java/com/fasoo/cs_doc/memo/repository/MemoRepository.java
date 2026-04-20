@@ -4,21 +4,15 @@ import com.fasoo.cs_doc.memo.domain.Memo;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
-import java.util.List;
+import java.time.LocalDateTime;
 
-public interface MemoRepository extends JpaRepository<Memo, Long> {
-
-    /** 제목+본문 검색. title은 LOWER로 대소문자 무시, body는 LIKE만 (CLOB/LONG 타입에 LOWER 미지원 방지) */
-    @Query("SELECT m FROM Memo m WHERE LOWER(m.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR m.body LIKE CONCAT('%', :keyword, '%') ORDER BY m.updatedAt DESC")
-    Page<Memo> findByKeyword(@Param("keyword") String keyword, Pageable pageable);
+public interface MemoRepository extends JpaRepository<Memo, Long>, JpaSpecificationExecutor<Memo> {
 
     /** 키워드 없을 때 전체 목록 (Pageable로 페이징, 정렬은 service에서 Sort 지정) */
     Page<Memo> findAllBy(Pageable pageable);
 
-    /** 키워드 검색 결과 개수 */
-    @Query("SELECT COUNT(m) FROM Memo m WHERE LOWER(m.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR m.body LIKE CONCAT('%', :keyword, '%')")
-    long countByKeyword(@Param("keyword") String keyword);
+    /** 관리자 통계: 기간 내 등록된 메모 수 (createdAt ∈ [start, end) ) */
+    long countByCreatedAtGreaterThanEqualAndCreatedAtLessThan(LocalDateTime startInclusive, LocalDateTime endExclusive);
 }

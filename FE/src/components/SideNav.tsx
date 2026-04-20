@@ -195,6 +195,22 @@ export default function SideNav() {
                         버전 이력
                     </NavLink>
                     <NavLink
+                        to="/admin/content-stats"
+                        style={({ isActive }) => ({
+                            display: "block",
+                            padding: "10px 12px",
+                            borderRadius: 6,
+                            textDecoration: "none",
+                            color: isActive ? "#ffffff" : "#374151",
+                            background: isActive ? "#3B82F6" : "transparent",
+                            fontWeight: isActive ? 600 : 500,
+                            fontSize: 14,
+                            marginBottom: 4,
+                        })}
+                    >
+                        게시글 통계
+                    </NavLink>
+                    <NavLink
                         to="/users/manage"
                         style={({ isActive }) => ({
                             display: "block",

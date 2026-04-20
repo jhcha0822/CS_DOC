@@ -4,14 +4,39 @@ import com.fasoo.cs_doc.post.domain.Post;
 import com.fasoo.cs_doc.post.domain.PostKind;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 
 public interface PostRepository extends JpaRepository<Post, Long> {
+
+    /** 목록 병합용: 페이지 상한 없이 정렬만 적용 (내부 페이징은 서비스에서 처리) */
+    List<Post> findByDeletedFalseAndCategoryIdIn(List<Long> categoryIds, Sort sort);
+
+    List<Post> findByDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(List<Long> categoryIds, String keyword, Sort sort);
+
+    List<Post> findByIsNoticeFalseAndDeletedFalse(Sort sort);
+
+    List<Post> findByIsNoticeFalseAndDeletedFalseAndTitleContainingIgnoreCase(String keyword, Sort sort);
+
+    List<Post> findByIsNoticeFalseAndDeletedFalseAndCategoryIdIn(List<Long> categoryIds, Sort sort);
+
+    List<Post> findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndTitleContainingIgnoreCase(List<Long> categoryIds, String keyword, Sort sort);
+
+    List<Post> findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndPostKind(List<Long> categoryIds, PostKind postKind, Sort sort);
+
+    List<Post> findByIsNoticeFalseAndDeletedFalseAndCategoryIdInAndPostKindAndTitleContainingIgnoreCase(List<Long> categoryIds, PostKind postKind, String keyword, Sort sort);
+
+    List<Post> findByIsNoticeFalseAndDeletedFalseAndCategory(com.fasoo.cs_doc.post.domain.PostCategory category, Sort sort);
+
+    List<Post> findByIsNoticeFalseAndDeletedFalseAndCategoryAndTitleContainingIgnoreCase(com.fasoo.cs_doc.post.domain.PostCategory category, String keyword, Sort sort);
+
     Page<Post> findByTitleContainingIgnoreCase(String keyword, Pageable pageable);
     
     // categoryId 기반 쿼리
@@ -62,6 +87,44 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     
     // 카테고리 ID와 그 하위 카테고리들을 포함하는 쿼리 (카테고리 계층 구조 지원)
     // 재귀적으로 하위 카테고리를 찾기 위해 Java 코드에서 처리하므로 여기서는 단순 쿼리만 제공
+
+    /** 관리자 통계: 카테고리별 비삭제 게시글 수 */
+    long countByDeletedFalseAndCategoryIdIn(Collection<Long> categoryIds);
+
+    long countByDeletedFalseAndCategoryIdInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            Collection<Long> categoryIds,
+            LocalDateTime createdAtAfterInclusive,
+            LocalDateTime createdAtBeforeExclusive
+    );
+
+    long countByDeletedFalseAndCategoryIdIsNull();
+
+    long countByDeletedFalseAndCategoryIdIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            LocalDateTime createdAtAfterInclusive,
+            LocalDateTime createdAtBeforeExclusive
+    );
+
+    long countByDeletedFalse();
+
+    long countByDeletedFalseAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            LocalDateTime createdAtAfterInclusive,
+            LocalDateTime createdAtBeforeExclusive
+    );
+
+    Page<Post> findByDeletedFalseAndCategoryIdInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            Collection<Long> categoryIds,
+            LocalDateTime createdAtAfterInclusive,
+            LocalDateTime createdAtBeforeExclusive,
+            Pageable pageable
+    );
+
+    Page<Post> findByDeletedFalseAndCategoryIdIsNull(Pageable pageable);
+
+    Page<Post> findByDeletedFalseAndCategoryIdIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            LocalDateTime createdAtAfterInclusive,
+            LocalDateTime createdAtBeforeExclusive,
+            Pageable pageable
+    );
 
     /** 실습(과제) 목록 - 관리자 채점 조회용 */
     List<Post> findByDeletedFalseAndPostKindOrderByCreatedAtDesc(PostKind postKind);

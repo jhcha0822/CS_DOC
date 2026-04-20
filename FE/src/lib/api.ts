@@ -7,6 +7,33 @@ export function getApiBase(): string {
     if (typeof window !== "undefined") return "http://192.168.11.181:8080";
     return "http://192.168.11.181:8080";
 }
+
+/**
+ * 첨부 다운로드: 서버는 UUID로 저장하지만 Content-Disposition으로 원본 파일명을 내려준다.
+ * (크로스 오리진에서 <a download>가 무시되는 문제 대응)
+ */
+export function buildAttachmentDownloadUrl(attachmentUrl: string, displayName: string): string {
+    const base = getApiBase().replace(/\/$/, "");
+    let path = attachmentUrl.trim();
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+        try {
+            path = new URL(path).pathname;
+        } catch {
+            /* keep path as-is */
+        }
+    }
+    if (!path.startsWith("/")) {
+        path = `/${path}`;
+    }
+    const qs = new URLSearchParams();
+    qs.set("url", path);
+    const name = displayName.trim();
+    if (name) {
+        qs.set("name", name);
+    }
+    return `${base}/api/attachments/download?${qs.toString()}`;
+}
+
 const API_BASE = getApiBase();
 
 export type PostListItem = {
@@ -508,6 +535,60 @@ export async function fetchAdminAssignmentGrades(params?: { assignmentId?: numbe
         ...raw,
         allSubmissions: raw.allSubmissions ?? raw.all_submissions ?? [],
     };
+}
+
+/** 관리자: 카테고리별 게시글 수·기간별 등록 수·메모 수 */
+export type CategoryPostCountRow = {
+    categoryId: number;
+    parentId: number | null;
+    depth: number;
+    label: string;
+    postCount: number;
+    postFilterCategoryIds: number[];
+};
+
+export type AdminContentStatsResponse = {
+    totalPostCount: number;
+    rows: CategoryPostCountRow[];
+    uncategorizedPostCount: number;
+    memoCount: number;
+    rangeStart: string | null;
+    rangeEnd: string | null;
+    dateFilterApplied: boolean;
+};
+
+export async function fetchAdminContentStats(params?: { start?: string; end?: string }): Promise<AdminContentStatsResponse> {
+    const url = new URL("/api/admin/content-stats", API_BASE);
+    if (params?.start) url.searchParams.set("start", params.start);
+    if (params?.end) url.searchParams.set("end", params.end);
+    return fetchJson<AdminContentStatsResponse>(url.toString());
+}
+
+export type PostStatListItem = {
+    id: number;
+    title: string;
+    createdAt: string;
+    categoryId: number | null;
+    categoryLabel: string;
+};
+
+export async function fetchAdminContentStatsPosts(params: {
+    uncategorized?: boolean;
+    categoryIds?: number[];
+    start?: string;
+    end?: string;
+}): Promise<PostStatListItem[]> {
+    const url = new URL("/api/admin/content-stats/posts", API_BASE);
+    if (params.uncategorized) url.searchParams.set("uncategorized", "true");
+    if (params.categoryIds?.length) {
+        for (const id of params.categoryIds) {
+            url.searchParams.append("categoryIds", String(id));
+        }
+    }
+    if (params.start) url.searchParams.set("start", params.start);
+    if (params.end) url.searchParams.set("end", params.end);
+    const list = await fetchJson<PostStatListItem[]>(url.toString());
+    return list ?? [];
 }
 
 /** 실습 결과 작성 요청 (관리자 → 사용자) */
