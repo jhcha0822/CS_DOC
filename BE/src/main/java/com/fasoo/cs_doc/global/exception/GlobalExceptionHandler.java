@@ -2,9 +2,12 @@ package com.fasoo.cs_doc.global.exception;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.stream.Collectors;
 
@@ -38,6 +41,26 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ErrorResponse handleIllegalState(IllegalStateException e) {
         return new ErrorResponse("INTERNAL_ERROR", e.getMessage());
+    }
+
+    /**
+     * {@link ResponseStatusException}은 {@link Exception}의 하위 타입이라
+     * 아래 {@code Exception} 핸들러에 잡히면 403/404 등이 전부 500으로 보였음.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ErrorResponse> handleResponseStatus(ResponseStatusException e) {
+        HttpStatusCode status = e.getStatusCode();
+        int code = status.value();
+        String reason = e.getReason();
+        String message = reason != null && !reason.isBlank() ? reason : ("HTTP " + code);
+        String errCode = switch (code) {
+            case 400 -> "BAD_REQUEST";
+            case 401 -> "UNAUTHORIZED";
+            case 403 -> "FORBIDDEN";
+            case 404 -> "NOT_FOUND";
+            default -> "HTTP_" + code;
+        };
+        return ResponseEntity.status(status).body(new ErrorResponse(errCode, message));
     }
 
     @ExceptionHandler(Exception.class)

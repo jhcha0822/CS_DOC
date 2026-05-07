@@ -6,12 +6,15 @@ import {
     fetchCategories,
     fetchPost,
     fetchPostContent,
+    parseLinkedPostAttachments,
     patchPost,
+    removePostAttachmentLink,
     updateContentByUpload,
     uploadImage,
     ApiError,
     type AssignmentTaskItemInput,
     type CategoryItem,
+    type LinkedPostAttachment,
 } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
 import ErrorModal from "../components/ErrorModal";
@@ -146,6 +149,12 @@ export default function PostEditorPage() {
         }
     }, [isEdit, catParam, editableCategories]);
 
+    useEffect(() => {
+        if (!isEdit) {
+            setLinkedAttachments([]);
+        }
+    }, [isEdit]);
+
     const [title, setTitle] = useState("");
     const [summaryTitle, setSummaryTitle] = useState<string>("");
     const [markdown, setMarkdown] = useState("");
@@ -157,6 +166,9 @@ export default function PostEditorPage() {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [selectedImages, setSelectedImages] = useState<File[]>([]);
     const [selectedAttachments, setSelectedAttachments] = useState<File[]>([]);
+    /** 수정 모드: 서버에 이미 연결된 첨부 (링크 제거 API로만 삭제) */
+    const [linkedAttachments, setLinkedAttachments] = useState<LinkedPostAttachment[]>([]);
+    const [removingAttachmentUrl, setRemovingAttachmentUrl] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
 
     const editorRef = useRef<{ textarea?: HTMLTextAreaElement } | null>(null);
@@ -200,6 +212,7 @@ export default function PostEditorPage() {
         setLoading(true);
         setError(null);
         setPostKindFromPost(null);
+        setLinkedAttachments([]);
         fetchPost(postId)
             .then((post) => {
                 if (cancelled) return;
@@ -225,6 +238,7 @@ export default function PostEditorPage() {
                         }))
                     );
                 }
+                setLinkedAttachments(parseLinkedPostAttachments(post.attachments));
                 return fetchPostContent(postId).then((contentRes) => {
                     if (cancelled) return;
                     setMarkdown(contentRes?.markdown ?? post.contentMd ?? "");
@@ -428,6 +442,25 @@ export default function PostEditorPage() {
         [uploadImage]
     );
 
+    const handleRemoveLinkedAttachment = useCallback(
+        async (attachmentUrl: string) => {
+            if (!Number.isFinite(postId)) return;
+            setRemovingAttachmentUrl(attachmentUrl);
+            setError(null);
+            try {
+                await removePostAttachmentLink(postId, attachmentUrl);
+                setLinkedAttachments((prev) => prev.filter((x) => x.url !== attachmentUrl));
+            } catch (e) {
+                const msg =
+                    e instanceof ApiError ? e.message : e instanceof Error ? e.message : "첨부를 제거하지 못했습니다.";
+                setError(msg);
+            } finally {
+                setRemovingAttachmentUrl(null);
+            }
+        },
+        [postId]
+    );
+
     const handleReplaceContentByUpload = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
             const file = e.target.files?.[0];
@@ -561,6 +594,68 @@ export default function PostEditorPage() {
             setSaving(false);
         }
     }, [isEdit, isAssignmentForm, postId, title, summaryTitle, markdown, selectedCategoryId, isNotice, maxScore, assignmentTasks, selectedAttachments, searchParams, navigate]);
+
+    const existingLinkedAttachmentsSection =
+        isEdit && linkedAttachments.length > 0 ? (
+            <div style={{ marginTop: 14, width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, opacity: 0.85 }}>등록된 첨부파일</div>
+                <ul
+                    style={{
+                        listStyle: "none",
+                        margin: 0,
+                        padding: 0,
+                        border: "1px solid #ddd",
+                        borderRadius: 8,
+                        overflow: "hidden",
+                        background: "#fff",
+                    }}
+                >
+                    {linkedAttachments.map((item, idx) => (
+                        <li
+                            key={`${item.url}-${idx}`}
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 10,
+                                padding: "10px 12px",
+                                borderBottom: idx < linkedAttachments.length - 1 ? "1px solid #eee" : undefined,
+                                fontSize: 13,
+                            }}
+                        >
+                            <span style={{ wordBreak: "break-all", minWidth: 0 }}>{item.name}</span>
+                            <button
+                                type="button"
+                                title="게시글에서 첨부 링크 제거"
+                                aria-label="첨부 제거"
+                                disabled={removingAttachmentUrl !== null}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleRemoveLinkedAttachment(item.url);
+                                }}
+                                style={{
+                                    flexShrink: 0,
+                                    width: 32,
+                                    height: 32,
+                                    border: "none",
+                                    background: "transparent",
+                                    color: "#dc2626",
+                                    fontSize: 22,
+                                    lineHeight: 1,
+                                    cursor: removingAttachmentUrl !== null ? "not-allowed" : "pointer",
+                                    fontWeight: 700,
+                                }}
+                            >
+                                {removingAttachmentUrl === item.url ? "…" : "×"}
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+                <div style={{ fontSize: 11, opacity: 0.65, marginTop: 6 }}>
+                    링크만 제거합니다. 파일은 서버에 남아 있으며, 이후 버전부터 상세·목록 첨부 목록에 표시되지 않습니다.
+                </div>
+            </div>
+        ) : null;
 
     if (loading) {
         return (
@@ -1068,6 +1163,7 @@ export default function PostEditorPage() {
                                     </div>
                                 ))}
                             </div>
+                            {existingLinkedAttachmentsSection}
                         </div>
                     </>
                 )}
@@ -1166,6 +1262,7 @@ export default function PostEditorPage() {
                             </div>
                         )}
                     </div>
+                    {existingLinkedAttachmentsSection}
                 </div>
 
                 <div>

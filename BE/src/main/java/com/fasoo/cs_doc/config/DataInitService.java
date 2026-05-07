@@ -7,6 +7,7 @@ import com.fasoo.cs_doc.assignment.repository.*;
 import com.fasoo.cs_doc.category.config.CategoryDataLoader;
 import com.fasoo.cs_doc.category.repository.CategoryRepository;
 import com.fasoo.cs_doc.global.config.StorageProperties;
+import com.fasoo.cs_doc.memo.repository.DeletedMemoRepository;
 import com.fasoo.cs_doc.memo.repository.MemoRepository;
 import com.fasoo.cs_doc.post.repository.CommentRepository;
 import com.fasoo.cs_doc.post.repository.PostRepository;
@@ -48,6 +49,7 @@ public class DataInitService {
     private final PostVersionRepository postVersionRepository;
     private final PostRepository postRepository;
     private final MemoRepository memoRepository;
+    private final DeletedMemoRepository deletedMemoRepository;
     private final CategoryRepository categoryRepository;
     private final ApplicationContext applicationContext;
     private final StorageProperties storageProperties;
@@ -68,6 +70,7 @@ public class DataInitService {
             PostVersionRepository postVersionRepository,
             PostRepository postRepository,
             MemoRepository memoRepository,
+            DeletedMemoRepository deletedMemoRepository,
             CategoryRepository categoryRepository,
             ApplicationContext applicationContext,
             StorageProperties storageProperties) {
@@ -83,6 +86,7 @@ public class DataInitService {
         this.postVersionRepository = postVersionRepository;
         this.postRepository = postRepository;
         this.memoRepository = memoRepository;
+        this.deletedMemoRepository = deletedMemoRepository;
         this.categoryRepository = categoryRepository;
         this.applicationContext = applicationContext;
         this.storageProperties = storageProperties;
@@ -151,6 +155,14 @@ public class DataInitService {
         postRepository.deleteAllInBatch();
         log.info("post {}건 삭제 완료", postCount);
 
+        try {
+            long deletedMemoCount = deletedMemoRepository.count();
+            deletedMemoRepository.deleteAllInBatch();
+            log.info("deleted_memo {}건 삭제 완료", deletedMemoCount);
+        } catch (Exception e) {
+            log.debug("deleted_memo 삭제 생략: {}", e.getMessage());
+        }
+
         long memoCount = memoRepository.count();
         memoRepository.deleteAllInBatch();
         log.info("memo {}건 삭제 완료", memoCount);
@@ -179,6 +191,9 @@ public class DataInitService {
             entityManager.createNativeQuery("ALTER TABLE post_version ALTER COLUMN id RESTART WITH 1").executeUpdate();
             entityManager.createNativeQuery("ALTER TABLE post ALTER COLUMN id RESTART WITH 1").executeUpdate();
             entityManager.createNativeQuery("ALTER TABLE memo ALTER COLUMN id RESTART WITH 1").executeUpdate();
+            try {
+                entityManager.createNativeQuery("ALTER TABLE deleted_memo ALTER COLUMN id RESTART WITH 1").executeUpdate();
+            } catch (Exception ignored) {}
             entityManager.createNativeQuery("ALTER TABLE category ALTER COLUMN id RESTART WITH 1").executeUpdate();
             log.info("모든 테이블 ID 시퀀스 1부터 재시작 완료");
         } catch (Exception e) {

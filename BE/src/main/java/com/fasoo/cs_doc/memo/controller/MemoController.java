@@ -60,10 +60,15 @@ public class MemoController {
         return memoService.update(id, req);
     }
 
-    @Operation(summary = "Delete memo")
+    @Operation(summary = "Delete memo", description = "삭제 사유(JSON body) 필수. 스냅샷은 deleted_memo에 보관됩니다.")
     @DeleteMapping("/{id}")
     @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long id) {
-        memoService.delete(id);
+    public void delete(
+            @PathVariable Long id,
+            @RequestBody(required = false) @Valid MemoDeleteRequest body,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId
+    ) {
+        String reason = body != null ? body.deletionReason() : null;
+        memoService.delete(id, userId, reason);
     }
 }

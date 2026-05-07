@@ -2,11 +2,15 @@ package com.fasoo.cs_doc.admin.service;
 
 import com.fasoo.cs_doc.admin.dto.AdminContentStatsResponse;
 import com.fasoo.cs_doc.admin.dto.CategoryPostCountDto;
+import com.fasoo.cs_doc.admin.dto.MemoStatListItem;
 import com.fasoo.cs_doc.admin.dto.PostStatListItem;
 import com.fasoo.cs_doc.category.domain.Category;
 import com.fasoo.cs_doc.category.repository.CategoryRepository;
 import com.fasoo.cs_doc.member.domain.UserRole;
 import com.fasoo.cs_doc.member.repository.MemberRepository;
+import com.fasoo.cs_doc.memo.domain.DeletedMemo;
+import com.fasoo.cs_doc.memo.domain.Memo;
+import com.fasoo.cs_doc.memo.repository.DeletedMemoRepository;
 import com.fasoo.cs_doc.memo.repository.MemoRepository;
 import com.fasoo.cs_doc.post.domain.Post;
 import com.fasoo.cs_doc.post.repository.PostRepository;
@@ -26,6 +30,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class AdminStatsService {
@@ -36,17 +41,20 @@ public class AdminStatsService {
     private final CategoryRepository categoryRepository;
     private final PostRepository postRepository;
     private final MemoRepository memoRepository;
+    private final DeletedMemoRepository deletedMemoRepository;
 
     public AdminStatsService(
             MemberRepository memberRepository,
             CategoryRepository categoryRepository,
             PostRepository postRepository,
-            MemoRepository memoRepository
+            MemoRepository memoRepository,
+            DeletedMemoRepository deletedMemoRepository
     ) {
         this.memberRepository = memberRepository;
         this.categoryRepository = categoryRepository;
         this.postRepository = postRepository;
         this.memoRepository = memoRepository;
+        this.deletedMemoRepository = deletedMemoRepository;
     }
 
     private void requireAdmin(Long userId) {
@@ -89,13 +97,26 @@ public class AdminStatsService {
                     .sorted(Comparator.comparingInt(Category::getSortOrder))
                     .forEach(c -> subtreeIds.add(c.getId()));
 
-            long parentTreeCount = countPostsInCategories(subtreeIds, dateFilter, rangeStart, rangeEndExclusive);
+            long parentCumulative = postRepository.countByDeletedFalseAndCategoryIdIn(subtreeIds);
+            Long parentCreated = null;
+            Long parentDeleted = null;
+            Long parentNet = null;
+            if (dateFilter) {
+                parentCreated = postRepository.countByCategoryIdInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                        subtreeIds, rangeStart, rangeEndExclusive);
+                parentDeleted = postRepository.countByDeletedTrueAndCategoryIdInAndUpdatedAtGreaterThanEqualAndUpdatedAtLessThan(
+                        subtreeIds, rangeStart, rangeEndExclusive);
+                parentNet = parentCreated - parentDeleted;
+            }
             rows.add(new CategoryPostCountDto(
                     parent.getId(),
                     null,
                     0,
                     parent.getLabel(),
-                    parentTreeCount,
+                    parentCumulative,
+                    parentCreated,
+                    parentDeleted,
+                    parentNet,
                     List.copyOf(subtreeIds)
             ));
 
@@ -105,37 +126,79 @@ public class AdminStatsService {
                     .collect(Collectors.toList());
             for (Category child : children) {
                 List<Long> childIds = List.of(child.getId());
-                long childCount = countPostsInCategories(childIds, dateFilter, rangeStart, rangeEndExclusive);
+                long childCumulative = postRepository.countByDeletedFalseAndCategoryIdIn(childIds);
+                Long childCreated = null;
+                Long childDeleted = null;
+                Long childNet = null;
+                if (dateFilter) {
+                    childCreated = postRepository.countByCategoryIdInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                            childIds, rangeStart, rangeEndExclusive);
+                    childDeleted = postRepository.countByDeletedTrueAndCategoryIdInAndUpdatedAtGreaterThanEqualAndUpdatedAtLessThan(
+                            childIds, rangeStart, rangeEndExclusive);
+                    childNet = childCreated - childDeleted;
+                }
                 rows.add(new CategoryPostCountDto(
                         child.getId(),
                         parent.getId(),
                         1,
                         child.getLabel(),
-                        childCount,
+                        childCumulative,
+                        childCreated,
+                        childDeleted,
+                        childNet,
                         childIds
                 ));
             }
         }
 
-        long uncategorized = dateFilter
-                ? postRepository.countByDeletedFalseAndCategoryIdIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
-                        rangeStart, rangeEndExclusive)
-                : postRepository.countByDeletedFalseAndCategoryIdIsNull();
+        long uncategorizedCumulative = postRepository.countByDeletedFalseAndCategoryIdIsNull();
+        Long uncCreated = null;
+        Long uncDeleted = null;
+        Long uncNet = null;
+        if (dateFilter) {
+            uncCreated = postRepository.countByCategoryIdIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                    rangeStart, rangeEndExclusive);
+            uncDeleted = postRepository.countByDeletedTrueAndCategoryIdIsNullAndUpdatedAtGreaterThanEqualAndUpdatedAtLessThan(
+                    rangeStart, rangeEndExclusive);
+            uncNet = uncCreated - uncDeleted;
+        }
 
-        long memoCnt = dateFilter
-                ? memoRepository.countByCreatedAtGreaterThanEqualAndCreatedAtLessThan(rangeStart, rangeEndExclusive)
-                : memoRepository.count();
+        long memoCumulative = memoRepository.count();
+        Long memoCreated = null;
+        Long memoDeleted = null;
+        Long memoNet = null;
+        if (dateFilter) {
+            memoCreated = memoRepository.countByCreatedAtGreaterThanEqualAndCreatedAtLessThan(rangeStart, rangeEndExclusive);
+            memoDeleted = deletedMemoRepository.countByDeletedAtGreaterThanEqualAndDeletedAtLessThan(
+                    rangeStart, rangeEndExclusive);
+            memoNet = memoCreated - memoDeleted;
+        }
 
-        long totalPostCount = dateFilter
-                ? postRepository.countByDeletedFalseAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
-                        rangeStart, rangeEndExclusive)
-                : postRepository.countByDeletedFalse();
+        long totalCumulative = postRepository.countByDeletedFalse();
+        Long totalCreated = null;
+        Long totalDeleted = null;
+        Long totalNet = null;
+        if (dateFilter) {
+            totalCreated = postRepository.countByCreatedAtGreaterThanEqualAndCreatedAtLessThan(rangeStart, rangeEndExclusive);
+            totalDeleted = postRepository.countByDeletedTrueAndUpdatedAtGreaterThanEqualAndUpdatedAtLessThan(
+                    rangeStart, rangeEndExclusive);
+            totalNet = totalCreated - totalDeleted;
+        }
 
         return new AdminContentStatsResponse(
-                totalPostCount,
+                totalCumulative,
+                totalCreated,
+                totalDeleted,
+                totalNet,
                 rows,
-                uncategorized,
-                memoCnt,
+                uncategorizedCumulative,
+                uncCreated,
+                uncDeleted,
+                uncNet,
+                memoCumulative,
+                memoCreated,
+                memoDeleted,
+                memoNet,
                 dateFilter ? start : null,
                 dateFilter ? end : null,
                 dateFilter
@@ -169,14 +232,14 @@ public class AdminStatsService {
         Page<Post> page;
         if (uncategorized) {
             page = dateFilter
-                    ? postRepository.findByDeletedFalseAndCategoryIdIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                    ? postRepository.findByCategoryIdIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
                             rangeStart, rangeEndExclusive, pageable)
-                    : postRepository.findByDeletedFalseAndCategoryIdIsNull(pageable);
+                    : postRepository.findByCategoryIdIsNull(pageable);
         } else {
             page = dateFilter
-                    ? postRepository.findByDeletedFalseAndCategoryIdInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+                    ? postRepository.findByCategoryIdInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
                             categoryIds, rangeStart, rangeEndExclusive, pageable)
-                    : postRepository.findByDeletedFalseAndCategoryIdIn(categoryIds, pageable);
+                    : postRepository.findByCategoryIdIn(categoryIds, pageable);
         }
 
         Map<Long, String> labelById = categoryRepository.findAllByOrderBySortOrderAsc().stream()
@@ -188,24 +251,78 @@ public class AdminStatsService {
                         p.getTitle(),
                         p.getCreatedAt(),
                         p.getCategoryId(),
-                        p.getCategoryId() != null ? labelById.getOrDefault(p.getCategoryId(), "—") : "카테고리 미지정"
+                        p.getCategoryId() != null ? labelById.getOrDefault(p.getCategoryId(), "—") : "카테고리 미지정",
+                        Boolean.TRUE.equals(p.getDeleted()),
+                        p.getDeletionReason()
                 ))
                 .toList();
     }
 
-    private long countPostsInCategories(
-            List<Long> categoryIds,
-            boolean dateFilter,
-            LocalDateTime rangeStart,
-            LocalDateTime rangeEndExclusive
-    ) {
-        if (categoryIds == null || categoryIds.isEmpty()) {
-            return 0;
+    @Transactional(readOnly = true)
+    public List<MemoStatListItem> listMemosForStats(Long userId, LocalDate start, LocalDate end) {
+        requireAdmin(userId);
+        boolean dateFilter = start != null && end != null;
+        if (dateFilter && end.isBefore(start)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "종료일은 시작일 이후여야 합니다.");
         }
-        if (dateFilter) {
-            return postRepository.countByDeletedFalseAndCategoryIdInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
-                    categoryIds, rangeStart, rangeEndExclusive);
+
+        if (!dateFilter) {
+            Pageable pageable = PageRequest.of(0, POST_LIST_CAP, Sort.by(Sort.Direction.DESC, "updatedAt"));
+            return memoRepository.findAllBy(pageable).getContent().stream()
+                    .map(m -> new MemoStatListItem(
+                            "m:" + m.getId(),
+                            m.getId(),
+                            m.getTitle(),
+                            m.getCreatedAt(),
+                            false,
+                            null,
+                            null
+                    ))
+                    .toList();
         }
-        return postRepository.countByDeletedFalseAndCategoryIdIn(categoryIds);
+
+        LocalDateTime rangeStart = start.atStartOfDay();
+        LocalDateTime rangeEndExclusive = end.plusDays(1).atStartOfDay();
+        Pageable byCreated = PageRequest.of(0, POST_LIST_CAP, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable byDeleted = PageRequest.of(0, POST_LIST_CAP, Sort.by(Sort.Direction.DESC, "deletedAt"));
+
+        List<Memo> createdInPeriod = memoRepository
+                .pageCreatedInPeriod(rangeStart, rangeEndExclusive, byCreated)
+                .getContent();
+        List<DeletedMemo> deletedInPeriod = deletedMemoRepository
+                .pageDeletedInPeriod(rangeStart, rangeEndExclusive, byDeleted)
+                .getContent();
+
+        List<MemoStatListItem> activeItems = createdInPeriod.stream()
+                .map(m -> new MemoStatListItem(
+                        "m:" + m.getId(),
+                        m.getId(),
+                        m.getTitle(),
+                        m.getCreatedAt(),
+                        false,
+                        null,
+                        null
+                ))
+                .toList();
+        List<MemoStatListItem> deletedItems = deletedInPeriod.stream()
+                .map(d -> new MemoStatListItem(
+                        "d:" + d.getId(),
+                        d.getSourceMemoId(),
+                        d.getTitle(),
+                        d.getOriginalCreatedAt(),
+                        true,
+                        d.getDeletedAt(),
+                        d.getDeletionReason()
+                ))
+                .toList();
+
+        return Stream.concat(activeItems.stream(), deletedItems.stream())
+                .sorted(Comparator.comparing(
+                        (MemoStatListItem x) -> x.deleted() ? x.deletedAt() : x.createdAt(),
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                ).reversed())
+                .limit(POST_LIST_CAP)
+                .toList();
     }
+
 }

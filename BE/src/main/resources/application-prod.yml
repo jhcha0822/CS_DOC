@@ -23,6 +23,8 @@ server:
 
 # 프로젝트 루트: D:\jhcha0822\CS_DOC (서비스·DB·마크다운 파일 모두 이 경로 기준)
 app:
+  logging:
+    dir: D:/jhcha0822/CS_DOC/CS_DOC_DATA/logs
   storage:
     base-dir: ${CS_DOC_BASE_DIR:D:/jhcha0822/CS_DOC}
     md-root: ${app.storage.base-dir}/CS_DOC_DATA/md

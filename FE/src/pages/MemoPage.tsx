@@ -12,6 +12,7 @@ import {
 import { ApiError } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
 import ErrorModal from "../components/ErrorModal";
+import DeletePostModal from "../components/DeletePostModal";
 
 const API_BASE = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ?? "http://localhost:8080";
 
@@ -75,6 +76,7 @@ export default function MemoPage() {
     const newMemoImageInputRef = useRef<HTMLInputElement>(null);
     const editMemoImageInputRef = useRef<HTMLInputElement>(null);
     const [modalImage, setModalImage] = useState<{ url: string; name?: string } | null>(null);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
     const loadList = useCallback(async () => {
         setLoading(true);
@@ -206,22 +208,31 @@ export default function MemoPage() {
         }
     }, [selectedId, editTitle, editBody, editImages, loadList]);
 
-    const handleDelete = useCallback(async () => {
-        if (selectedId == null || !window.confirm("이 메모를 삭제하시겠습니까?")) return;
-        setSaving(true);
-        setError(null);
-        try {
-            await deleteMemo(selectedId);
-            setSelectedId(null);
-            setDetail(null);
-            loadList();
-        } catch (e) {
-            const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "삭제에 실패했습니다.";
-            setError(msg);
-        } finally {
-            setSaving(false);
-        }
-    }, [selectedId, loadList]);
+    const confirmDeleteMemo = useCallback(
+        async (deletionReason: string) => {
+            if (selectedId == null) return;
+            setSaving(true);
+            setError(null);
+            try {
+                await deleteMemo(selectedId, deletionReason);
+                setDeleteModalOpen(false);
+                setSelectedId(null);
+                setDetail(null);
+                loadList();
+            } catch (e) {
+                const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "삭제에 실패했습니다.";
+                setError(msg);
+            } finally {
+                setSaving(false);
+            }
+        },
+        [selectedId, loadList]
+    );
+
+    const handleDeleteClick = useCallback(() => {
+        if (selectedId == null) return;
+        setDeleteModalOpen(true);
+    }, [selectedId]);
 
     const addImage = useCallback(async (file: File) => {
         if (editImages.length >= MAX_IMAGES) {
@@ -875,7 +886,7 @@ export default function MemoPage() {
                                     <div className="header-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
                                         <button
                                             type="button"
-                                            onClick={handleDelete}
+                                            onClick={handleDeleteClick}
                                             disabled={saving}
                                             style={{
                                                 width: 90,
@@ -1051,6 +1062,20 @@ export default function MemoPage() {
                     </div>
                 </div>
             )}
+            <DeletePostModal
+                open={deleteModalOpen}
+                onClose={() => !saving && setDeleteModalOpen(false)}
+                onConfirm={confirmDeleteMemo}
+                busy={saving}
+                title="메모 삭제"
+                description={
+                    <>
+                        정말 이 메모를 삭제하시겠습니까?
+                        <br />
+                        삭제된 메모는 목록에서 사라지며, 통계·감사를 위해 별도 보관 테이블에 스냅샷이 저장됩니다.
+                    </>
+                }
+            />
             <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         </div>
     );

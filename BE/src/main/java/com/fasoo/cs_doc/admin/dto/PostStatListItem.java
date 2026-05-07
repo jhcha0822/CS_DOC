@@ -7,5 +7,7 @@ public record PostStatListItem(
         String title,
         LocalDateTime createdAt,
         Long categoryId,
-        String categoryLabel
+        String categoryLabel,
+        boolean deleted,
+        String deletionReason
 ) {}

@@ -29,6 +29,9 @@ logging:
 # - NAS 운영: 환경변수 예) set CS_DOC_BASE_DIR=\\NAS\share\CS_DOC
 # - JVM 옵션으로 지정: -DCS_DOC_BASE_DIR=원하는경로
 app:
+  # 파일 로그 저장 경로 (기본값은 ${app.storage.base-dir}/CS_DOC_DATA/logs)
+  logging:
+    dir: ${APP_LOG_DIR:${app.storage.base-dir}/CS_DOC_DATA/logs}
   storage:
     base-dir: ${CS_DOC_BASE_DIR:${user.home}/Documents}
     md-root: ${app.storage.base-dir}/CS_DOC_DATA/md

@@ -57,17 +57,17 @@ export default function NotificationBell() {
     }, [open]);
 
     const todoCount = admin ? gradingTodo.length : todoRequests.length;
+    const hasNotification = todoCount > 0;
 
     return (
         <div ref={panelRef} style={{ position: "relative" }}>
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                title={admin ? "평가할 목록" : "할 일 실습 목록"}
+                title="알림 목록"
                 style={{
                     position: "relative",
                     padding: "6px 10px",
-                    fontSize: 18,
                     lineHeight: 1,
                     border: "none",
                     background: "transparent",
@@ -76,7 +76,25 @@ export default function NotificationBell() {
                 }}
                 aria-label="알림"
             >
-                🔔
+                <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    aria-hidden="true"
+                    focusable="false"
+                    style={{ display: "block" }}
+                >
+                    <path
+                        d="M12 22a2.4 2.4 0 0 0 2.4-2.4H9.6A2.4 2.4 0 0 0 12 22ZM20 18.4H4c1.6-1.6 2.4-3.2 2.4-6V9.2A5.6 5.6 0 0 1 11.2 3.8V3a.8.8 0 0 1 1.6 0v.8A5.6 5.6 0 0 1 17.6 9.2v3.2c0 2.8.8 4.4 2.4 6Z"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill={hasNotification ? "#facc15" : "none"}
+                    />
+                </svg>
                 {todoCount > 0 && (
                     <span
                         style={{
@@ -126,7 +144,7 @@ export default function NotificationBell() {
                             color: "#111827",
                         }}
                     >
-                        {admin ? "평가할 목록" : "작성해야 할 실습"}
+                        알림 목록
                     </div>
                     <div style={{ maxHeight: 300, overflowY: "auto" }}>
                         {loading ? (
@@ -136,7 +154,7 @@ export default function NotificationBell() {
                         ) : admin ? (
                             gradingTodo.length === 0 ? (
                                 <div style={{ padding: 24, textAlign: "center", color: "#6b7280", fontSize: 13 }}>
-                                    평가할 과제가 없습니다.
+                                    알림이 없습니다.
                                 </div>
                             ) : (
                                 <ul style={{ margin: 0, padding: "8px 0", listStyle: "none" }}>
@@ -168,7 +186,7 @@ export default function NotificationBell() {
                             )
                         ) : todoRequests.length === 0 ? (
                             <div style={{ padding: 24, textAlign: "center", color: "#6b7280", fontSize: 13 }}>
-                                작성할 실습이 없습니다.
+                                알림이 없습니다.
                             </div>
                         ) : (
                             <ul style={{ margin: 0, padding: "8px 0", listStyle: "none" }}>

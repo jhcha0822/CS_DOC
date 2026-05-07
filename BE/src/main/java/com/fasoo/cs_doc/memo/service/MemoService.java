@@ -3,8 +3,10 @@ package com.fasoo.cs_doc.memo.service;
 import com.fasoo.cs_doc.global.exception.NotFoundException;
 import com.fasoo.cs_doc.global.page.PageResponse;
 import com.fasoo.cs_doc.member.repository.MemberRepository;
+import com.fasoo.cs_doc.memo.domain.DeletedMemo;
 import com.fasoo.cs_doc.memo.domain.Memo;
 import com.fasoo.cs_doc.memo.dto.*;
+import com.fasoo.cs_doc.memo.repository.DeletedMemoRepository;
 import com.fasoo.cs_doc.memo.repository.MemoRepository;
 import com.fasoo.cs_doc.post.service.AttachmentInfo;
 import jakarta.persistence.criteria.Expression;
@@ -17,6 +19,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -29,10 +32,16 @@ public class MemoService {
     private static final int MAX_IMAGES = 10;
 
     private final MemoRepository memoRepository;
+    private final DeletedMemoRepository deletedMemoRepository;
     private final MemberRepository memberRepository;
 
-    public MemoService(MemoRepository memoRepository, MemberRepository memberRepository) {
+    public MemoService(
+            MemoRepository memoRepository,
+            DeletedMemoRepository deletedMemoRepository,
+            MemberRepository memberRepository
+    ) {
         this.memoRepository = memoRepository;
+        this.deletedMemoRepository = deletedMemoRepository;
         this.memberRepository = memberRepository;
     }
 
@@ -163,9 +172,15 @@ public class MemoService {
     }
 
     @Transactional
-    public void delete(Long id) {
+    public void delete(Long id, Long userId, String deletionReason) {
+        if (deletionReason == null || deletionReason.isBlank()) {
+            throw new IllegalArgumentException("삭제 사유를 입력해 주세요.");
+        }
         Memo memo = memoRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Memo not found: " + id));
+        String trimmed = deletionReason.trim();
+        DeletedMemo archived = DeletedMemo.archiveFrom(memo, userId, trimmed, LocalDateTime.now());
+        deletedMemoRepository.save(archived);
         memoRepository.delete(memo);
     }
 

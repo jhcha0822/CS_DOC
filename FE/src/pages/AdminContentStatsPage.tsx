@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import {
     fetchAdminContentStats,
+    fetchAdminContentStatsMemos,
     fetchAdminContentStatsPosts,
     type AdminContentStatsResponse,
     type CategoryPostCountRow,
+    type MemoStatListItem,
     type PostStatListItem,
 } from "../lib/api";
 import { ApiError } from "../lib/api";
@@ -44,6 +46,18 @@ function formatListDate(iso: string): string {
     }
 }
 
+function statCell(v: number | null | undefined): string {
+    if (v === null || v === undefined) return "—";
+    return String(v);
+}
+
+function netCellStyle(v: number | null | undefined): CSSProperties {
+    if (v === null || v === undefined) return { fontVariantNumeric: "tabular-nums" };
+    if (v < 0) return { fontVariantNumeric: "tabular-nums", color: "#b91c1c", fontWeight: 700 };
+    if (v > 0) return { fontVariantNumeric: "tabular-nums", color: "#15803d", fontWeight: 600 };
+    return { fontVariantNumeric: "tabular-nums", color: "#6b7280" };
+}
+
 type PostModalState = {
     title: string;
     uncategorized: boolean;
@@ -76,6 +90,11 @@ export default function AdminContentStatsPage() {
     const [postList, setPostList] = useState<PostStatListItem[]>([]);
     const [postListLoading, setPostListLoading] = useState(false);
     const [postModalError, setPostModalError] = useState<string | null>(null);
+    const [memoModalOpen, setMemoModalOpen] = useState(false);
+    const [memoList, setMemoList] = useState<MemoStatListItem[]>([]);
+    const [memoListLoading, setMemoListLoading] = useState(false);
+    const [memoModalError, setMemoModalError] = useState<string | null>(null);
+    const [deletionReasonModal, setDeletionReasonModal] = useState<{ title: string; reason: string } | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -168,6 +187,34 @@ export default function AdminContentStatsPage() {
         setPostModal(null);
         setPostList([]);
         setPostModalError(null);
+        setDeletionReasonModal(null);
+    };
+
+    const openMemoList = async () => {
+        const s = start.trim();
+        const e = end.trim();
+        const period = s && e ? { start: s, end: e } : {};
+        setMemoModalOpen(true);
+        setMemoList([]);
+        setMemoModalError(null);
+        setMemoListLoading(true);
+        try {
+            const list = await fetchAdminContentStatsMemos(period);
+            setMemoList(list);
+        } catch (err) {
+            const msg =
+                err instanceof ApiError ? err.message : err instanceof Error ? err.message : "목록을 불러오지 못했습니다.";
+            setMemoModalError(msg);
+        } finally {
+            setMemoListLoading(false);
+        }
+    };
+
+    const closeMemoModal = () => {
+        setMemoModalOpen(false);
+        setMemoList([]);
+        setMemoModalError(null);
+        setDeletionReasonModal(null);
     };
 
     if (!isAdmin()) {
@@ -182,7 +229,7 @@ export default function AdminContentStatsPage() {
         <div style={{ maxWidth: 960 }}>
             <h1 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800 }}>게시글 통계</h1>
             <p style={{ margin: "0 0 20px", fontSize: 14, color: "#6b7280", lineHeight: 1.5 }}>
-                상위·하위 카테고리별 게시글 수와, 선택한 기간에 등록된 게시글·메모 수를 확인합니다. 상위 행의 게시글 수는 해당 상위에 속한 하위 카테고리까지 포함한 합계입니다. 카테고리 이름을 누르면 해당 범위의 게시글 목록을 볼 수 있습니다.
+                상위·하위 카테고리별로 누계(현재 비삭제), 기간 선택 시 증가(생성일 기준 신규), 감소(삭제 처리 시각·DB의 updated_at 근사), 순증감(증가−감소, 음수 가능)을 확인합니다. 상위 행은 해당 하위까지 합산합니다. 카테고리 이름을 누르면 해당 범위의 게시글 목록을 볼 수 있습니다. 메모 행은 별도 테이블로 집계되며, 메모 제목을 누르면 기간 내 신규·삭제 보관 목록을 볼 수 있습니다.
             </p>
 
             <div
@@ -269,7 +316,10 @@ export default function AdminContentStatsPage() {
                                 <tr style={{ background: "#f3f4f6", borderBottom: "1px solid #e5e7eb" }}>
                                     <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 600 }}>구분</th>
                                     <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 600 }}>카테고리</th>
-                                    <th style={{ padding: "12px 14px", textAlign: "right", fontWeight: 600 }}>게시글 수</th>
+                                    <th style={{ padding: "12px 14px", textAlign: "right", fontWeight: 600 }}>누계</th>
+                                    <th style={{ padding: "12px 14px", textAlign: "right", fontWeight: 600 }}>증가</th>
+                                    <th style={{ padding: "12px 14px", textAlign: "right", fontWeight: 600 }}>감소</th>
+                                    <th style={{ padding: "12px 14px", textAlign: "right", fontWeight: 600 }}>순증감</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -285,6 +335,15 @@ export default function AdminContentStatsPage() {
                                         }}
                                     >
                                         {data.totalPostCount}
+                                    </td>
+                                    <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#1d4ed8" }}>
+                                        {statCell(data.totalCreatedInPeriod)}
+                                    </td>
+                                    <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#1d4ed8" }}>
+                                        {statCell(data.totalDeletedInPeriod)}
+                                    </td>
+                                    <td style={{ padding: "10px 14px", textAlign: "right", ...netCellStyle(data.totalNetChangeInPeriod) }}>
+                                        {statCell(data.totalNetChangeInPeriod)}
                                     </td>
                                 </tr>
                                 {data.rows.map((row) => (
@@ -302,8 +361,15 @@ export default function AdminContentStatsPage() {
                                                 {row.label}
                                             </button>
                                         </td>
+                                        <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{row.postCount}</td>
                                         <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                                            {row.postCount}
+                                            {statCell(row.createdInPeriod)}
+                                        </td>
+                                        <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                                            {statCell(row.deletedInPeriod)}
+                                        </td>
+                                        <td style={{ padding: "10px 14px", textAlign: "right", ...netCellStyle(row.netChangeInPeriod) }}>
+                                            {statCell(row.netChangeInPeriod)}
                                         </td>
                                     </tr>
                                 ))}
@@ -317,29 +383,38 @@ export default function AdminContentStatsPage() {
                                     <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                                         {data.uncategorizedPostCount}
                                     </td>
+                                    <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                                        {statCell(data.uncategorizedCreatedInPeriod)}
+                                    </td>
+                                    <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                                        {statCell(data.uncategorizedDeletedInPeriod)}
+                                    </td>
+                                    <td style={{ padding: "10px 14px", textAlign: "right", ...netCellStyle(data.uncategorizedNetChangeInPeriod) }}>
+                                        {statCell(data.uncategorizedNetChangeInPeriod)}
+                                    </td>
+                                </tr>
+                                <tr style={{ background: "#eff6ff", borderTop: "1px solid #e5e7eb" }}>
+                                    <td style={{ padding: "10px 14px", color: "#1e3a8a", fontSize: 13 }}>메모</td>
+                                    <td style={{ padding: "10px 14px" }}>
+                                        <button type="button" style={{ ...linkLikeBtn, fontWeight: 600 }} onClick={openMemoList}>
+                                            메모 (목록)
+                                        </button>
+                                    </td>
+                                    <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#1d4ed8" }}>
+                                        {data.memoCumulativeCount}
+                                    </td>
+                                    <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#1d4ed8" }}>
+                                        {statCell(data.memoCreatedInPeriod)}
+                                    </td>
+                                    <td style={{ padding: "10px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#1d4ed8" }}>
+                                        {statCell(data.memoDeletedInPeriod)}
+                                    </td>
+                                    <td style={{ padding: "10px 14px", textAlign: "right", ...netCellStyle(data.memoNetChangeInPeriod) }}>
+                                        {statCell(data.memoNetChangeInPeriod)}
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
-                    </div>
-
-                    <div
-                        style={{
-                            marginTop: 16,
-                            padding: 16,
-                            borderRadius: 8,
-                            border: "1px solid #e5e7eb",
-                            background: "#eff6ff",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            flexWrap: "wrap",
-                            gap: 8,
-                        }}
-                    >
-                        <span style={{ fontWeight: 600, color: "#1e40af" }}>메모 (등록 기준)</span>
-                        <span style={{ fontSize: 20, fontWeight: 800, color: "#1d4ed8", fontVariantNumeric: "tabular-nums" }}>
-                            {data.memoCount}개
-                        </span>
                     </div>
                 </>
             )}
@@ -418,29 +493,313 @@ export default function AdminContentStatsPage() {
                             )}
                             {!postListLoading && postList.length > 0 && (
                                 <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-                                    {postList.map((p) => (
-                                        <li
-                                            key={p.id}
-                                            style={{
-                                                padding: "10px 0",
-                                                borderBottom: "1px solid #f3f4f6",
-                                            }}
-                                        >
-                                            <Link
-                                                to={`/posts/${p.id}`}
-                                                onClick={closePostModal}
-                                                style={{ fontWeight: 600, color: "#1d4ed8", textDecoration: "none" }}
+                                    {postList.map((p) => {
+                                        const isDeleted = p.deleted === true;
+                                        const reason = (p.deletionReason ?? "").trim();
+                                        return (
+                                            <li
+                                                key={p.id}
+                                                style={{
+                                                    padding: "10px 12px",
+                                                    margin: "0 -6px",
+                                                    borderRadius: 8,
+                                                    borderBottom: "1px solid #f3f4f6",
+                                                    background: isDeleted ? "#fef2f2" : undefined,
+                                                    borderLeft: isDeleted ? "3px solid #dc2626" : "3px solid transparent",
+                                                }}
                                             >
-                                                {p.title || "(제목 없음)"}
-                                            </Link>
-                                            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                                                {formatListDate(p.createdAt)} · {p.categoryLabel}
-                                            </div>
-                                        </li>
-                                    ))}
+                                                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                                                    {isDeleted ? (
+                                                        <span style={{ fontWeight: 600, color: "#991b1b" }}>
+                                                            {p.title || "(제목 없음)"}
+                                                        </span>
+                                                    ) : (
+                                                        <Link
+                                                            to={`/posts/${p.id}`}
+                                                            onClick={closePostModal}
+                                                            style={{ fontWeight: 600, color: "#1d4ed8", textDecoration: "none" }}
+                                                        >
+                                                            {p.title || "(제목 없음)"}
+                                                        </Link>
+                                                    )}
+                                                    {isDeleted && (
+                                                        <span
+                                                            style={{
+                                                                fontSize: 11,
+                                                                fontWeight: 700,
+                                                                color: "#fff",
+                                                                background: "#dc2626",
+                                                                padding: "2px 8px",
+                                                                borderRadius: 4,
+                                                            }}
+                                                        >
+                                                            삭제됨
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+                                                    {formatListDate(p.createdAt)} · {p.categoryLabel}
+                                                </div>
+                                                {isDeleted && reason && (
+                                                    <div style={{ marginTop: 8 }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                setDeletionReasonModal({
+                                                                    title: p.title || "(제목 없음)",
+                                                                    reason,
+                                                                })
+                                                            }
+                                                            style={{
+                                                                ...linkLikeBtn,
+                                                                fontSize: 12,
+                                                                fontWeight: 600,
+                                                                color: "#b91c1c",
+                                                            }}
+                                                        >
+                                                            삭제 사유 보기
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {isDeleted && !reason && (
+                                                    <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 6 }}>삭제 사유 없음</div>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
                                 </ul>
                             )}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {memoModalOpen && (
+                <div
+                    role="presentation"
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(0,0,0,0.45)",
+                        zIndex: 10002,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 16,
+                    }}
+                    onMouseDown={(ev) => {
+                        if (ev.target === ev.currentTarget) closeMemoModal();
+                    }}
+                >
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="content-stats-memo-modal-title"
+                        style={{
+                            width: "min(560px, 100%)",
+                            maxHeight: "min(80vh, 640px)",
+                            overflow: "hidden",
+                            display: "flex",
+                            flexDirection: "column",
+                            background: "#fff",
+                            borderRadius: 10,
+                            boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                    >
+                        <div
+                            style={{
+                                padding: "14px 18px",
+                                borderBottom: "1px solid #e5e7eb",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 12,
+                            }}
+                        >
+                            <h2 id="content-stats-memo-modal-title" style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>
+                                메모
+                            </h2>
+                            <button
+                                type="button"
+                                onClick={closeMemoModal}
+                                aria-label="닫기"
+                                style={{
+                                    border: "none",
+                                    background: "#f3f4f6",
+                                    borderRadius: 8,
+                                    width: 36,
+                                    height: 36,
+                                    cursor: "pointer",
+                                    fontSize: 18,
+                                    lineHeight: 1,
+                                }}
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <div style={{ padding: "12px 18px 18px", overflow: "auto", flex: 1 }}>
+                            {memoModalError && (
+                                <p style={{ margin: "0 0 12px", color: "#b91c1c", fontSize: 14 }}>{memoModalError}</p>
+                            )}
+                            {memoListLoading && <p style={{ margin: 0, color: "#6b7280" }}>목록을 불러오는 중…</p>}
+                            {!memoListLoading && !memoModalError && memoList.length === 0 && (
+                                <p style={{ margin: 0, color: "#6b7280" }}>해당 조건의 메모가 없습니다.</p>
+                            )}
+                            {!memoListLoading && memoList.length > 0 && (
+                                <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+                                    {memoList.map((m) => {
+                                        const isDeleted = m.deleted === true;
+                                        const reason = (m.deletionReason ?? "").trim();
+                                        return (
+                                            <li
+                                                key={m.listKey}
+                                                style={{
+                                                    padding: "10px 12px",
+                                                    margin: "0 -6px",
+                                                    borderRadius: 8,
+                                                    borderBottom: "1px solid #f3f4f6",
+                                                    background: isDeleted ? "#fef2f2" : undefined,
+                                                    borderLeft: isDeleted ? "3px solid #dc2626" : "3px solid transparent",
+                                                }}
+                                            >
+                                                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+                                                    {isDeleted ? (
+                                                        <span style={{ fontWeight: 600, color: "#991b1b" }}>
+                                                            {m.title || "(제목 없음)"}
+                                                        </span>
+                                                    ) : (
+                                                        <Link
+                                                            to="/memos"
+                                                            onClick={closeMemoModal}
+                                                            style={{ fontWeight: 600, color: "#1d4ed8", textDecoration: "none" }}
+                                                        >
+                                                            {m.title || "(제목 없음)"}
+                                                        </Link>
+                                                    )}
+                                                    {isDeleted && (
+                                                        <span
+                                                            style={{
+                                                                fontSize: 11,
+                                                                fontWeight: 700,
+                                                                color: "#fff",
+                                                                background: "#dc2626",
+                                                                padding: "2px 8px",
+                                                                borderRadius: 4,
+                                                            }}
+                                                        >
+                                                            삭제됨
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+                                                    등록 {formatListDate(m.createdAt)} · 메모
+                                                    {isDeleted && m.deletedAt && (
+                                                        <> · 삭제 {formatListDate(m.deletedAt)}</>
+                                                    )}
+                                                </div>
+                                                {isDeleted && reason && (
+                                                    <div style={{ marginTop: 8 }}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                setDeletionReasonModal({
+                                                                    title: m.title || "(제목 없음)",
+                                                                    reason,
+                                                                })
+                                                            }
+                                                            style={{
+                                                                ...linkLikeBtn,
+                                                                fontSize: 12,
+                                                                fontWeight: 600,
+                                                                color: "#b91c1c",
+                                                            }}
+                                                        >
+                                                            삭제 사유 보기
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {isDeleted && !reason && (
+                                                    <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 6 }}>삭제 사유 없음</div>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deletionReasonModal && (
+                <div
+                    role="presentation"
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(0,0,0,0.5)",
+                        zIndex: 10004,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 16,
+                    }}
+                    onMouseDown={(ev) => {
+                        if (ev.target === ev.currentTarget) setDeletionReasonModal(null);
+                    }}
+                >
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="deletion-reason-modal-title"
+                        style={{
+                            width: "min(480px, 100%)",
+                            maxHeight: "min(70vh, 480px)",
+                            overflow: "auto",
+                            background: "#fff",
+                            borderRadius: 10,
+                            boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
+                            padding: "18px 20px",
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                    >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+                            <h2 id="deletion-reason-modal-title" style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#991b1b" }}>
+                                삭제 사유
+                            </h2>
+                            <button
+                                type="button"
+                                onClick={() => setDeletionReasonModal(null)}
+                                aria-label="닫기"
+                                style={{
+                                    border: "none",
+                                    background: "#f3f4f6",
+                                    borderRadius: 8,
+                                    width: 36,
+                                    height: 36,
+                                    cursor: "pointer",
+                                    fontSize: 18,
+                                    lineHeight: 1,
+                                    flexShrink: 0,
+                                }}
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <p style={{ margin: "0 0 10px", fontSize: 13, color: "#6b7280", fontWeight: 600 }}>{deletionReasonModal.title}</p>
+                        <p
+                            style={{
+                                margin: 0,
+                                fontSize: 14,
+                                color: "#111827",
+                                lineHeight: 1.6,
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                            }}
+                        >
+                            {deletionReasonModal.reason}
+                        </p>
                     </div>
                 </div>
             )}

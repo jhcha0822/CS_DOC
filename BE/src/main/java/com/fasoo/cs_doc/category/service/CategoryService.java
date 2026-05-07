@@ -97,6 +97,7 @@ public class CategoryService {
             c.setDepth(item.depth());
             c.setSortOrder(item.sortOrder());
             c.setAdminOnly(item.adminOnly() != null ? item.adminOnly() : false);
+            c.setSidebarVisible(item.sidebarVisible() != null ? item.sidebarVisible() : true);
             categoryRepository.save(c);
         }
     }

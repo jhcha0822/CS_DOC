@@ -69,6 +69,10 @@ public class Post {
     @Column(name = "deleted", nullable = false)
     private Boolean deleted = false; // Soft delete flag
 
+    /** 소프트 삭제 시 관리·통계용 사유 (삭제되지 않은 행은 null) */
+    @Column(name = "deletion_reason", nullable = true, length = 2000)
+    private String deletionReason;
+
     /**
      * 현재 버전 ID (PostVersion 테이블 참조)
      * 게시글 내용이 변경될 때마다 새로운 버전이 생성되고 이 필드가 업데이트됩니다.
@@ -126,6 +130,7 @@ public class Post {
     public Long getViewCount() { return viewCount != null ? viewCount : 0L; }
     public String getAttachments() { return attachments; }
     public Boolean getDeleted() { return deleted != null ? deleted : false; }
+    public String getDeletionReason() { return deletionReason; }
     public Long getCurrentVersionId() { return currentVersionId; }
     public Long getCreatedBy() { return createdBy; }
     public Long getUpdatedBy() { return updatedBy; }
@@ -215,12 +220,21 @@ public class Post {
         this.attachments = attachments; // null 허용
     }
 
-    public void markAsDeleted() {
+    public void markAsDeleted(String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("deletion reason is required");
+        }
+        String trimmed = reason.trim();
+        if (trimmed.length() > 2000) {
+            throw new IllegalArgumentException("deletion reason length must be <= 2000");
+        }
         this.deleted = true;
+        this.deletionReason = trimmed;
     }
 
     public void restore() {
         this.deleted = false;
+        this.deletionReason = null;
     }
 
     public void changeCurrentVersionId(Long currentVersionId) {

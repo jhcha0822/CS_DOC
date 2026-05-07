@@ -9,5 +9,6 @@ public record CategoryBulkUpdateItem(
         Long parentId,
         int depth,
         int sortOrder,
-        Boolean adminOnly
+        Boolean adminOnly,
+        Boolean sidebarVisible
 ) {}

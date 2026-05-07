@@ -1,6 +1,7 @@
 import { getCurrentUser, logout } from "../lib/auth";
 import { SITE_NAME } from "../lib/site";
 import NotificationBell from "./NotificationBell";
+import ShortcutMenus from "./ShortcutMenus";
 
 export default function Header() {
     const user = getCurrentUser();
@@ -43,6 +44,7 @@ export default function Header() {
 
             {/* 우측: 알림 종 + 사용자 정보 및 액션 */}
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <ShortcutMenus compact />
                 <NotificationBell />
                 {/* 사용자 이름 */}
                 <span

@@ -213,16 +213,31 @@ public class PostController {
     }
 
     @Operation(
-            summary = "Delete post",
-            description = "Delete the post row and its markdown file."
+            summary = "Remove attachment link from post",
+            description = "Removes one attachment entry from the post JSON. Does not delete the file on disk. Creates a new content version row (metadata change)."
+    )
+    @PostMapping(value = "/{id}/attachments/remove", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public PostResponse removeAttachmentLink(
+            @PathVariable Long id,
+            @RequestBody PostAttachmentRemoveRequest body,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId
+    ) {
+        return postService.removeAttachmentLink(id, body.url(), userId);
+    }
+
+    @Operation(
+            summary = "Delete post (soft)",
+            description = "Soft-deletes the post. Requires deletionReason in JSON body."
     )
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(
             @PathVariable Long id,
+            @RequestBody(required = false) PostDeleteRequest body,
             @RequestHeader(value = "X-User-Id", required = false) Long userId
     ) {
-        postService.delete(id, userId);
+        String reason = body != null ? body.deletionReason() : null;
+        postService.delete(id, userId, reason);
     }
 
     @Operation(

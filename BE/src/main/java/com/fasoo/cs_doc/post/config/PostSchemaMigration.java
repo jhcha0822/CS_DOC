@@ -114,6 +114,20 @@ public class PostSchemaMigration implements ApplicationRunner {
             } catch (Exception e) {
                 log.warn("Post deleted column migration failed: {}", e.getMessage());
             }
+
+            // 4b. deletion_reason (소프트 삭제 사유)
+            try {
+                String checkColumnSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'PUBLIC' AND TABLE_NAME = 'POST' AND COLUMN_NAME = 'DELETION_REASON'";
+                Long count = ((Number) entityManager.createNativeQuery(checkColumnSql).getSingleResult()).longValue();
+                if (count == 0) {
+                    entityManager.createNativeQuery("ALTER TABLE post ADD COLUMN deletion_reason VARCHAR(2000) NULL").executeUpdate();
+                    log.info("Post deletion_reason column added successfully");
+                } else {
+                    log.debug("Post deletion_reason column already exists");
+                }
+            } catch (Exception e) {
+                log.warn("Post deletion_reason column migration failed: {}", e.getMessage());
+            }
             
             // 5. current_version_id 컬럼 추가
             try {

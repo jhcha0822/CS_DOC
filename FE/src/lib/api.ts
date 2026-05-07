@@ -382,13 +382,63 @@ export async function addAttachmentsToPost(id: number, attachments: File[]): Pro
     }
 }
 
+export type LinkedPostAttachment = { url: string; name: string };
+
+/** 게시글 상세의 attachments JSON → 목록 표시용 */
+export function parseLinkedPostAttachments(raw: string | null | undefined): LinkedPostAttachment[] {
+    if (!raw || raw === "null" || raw.trim() === "" || raw.trim() === "[]") return [];
+    try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (!Array.isArray(parsed)) return [];
+        const out: LinkedPostAttachment[] = [];
+        for (const p of parsed) {
+            if (typeof p === "string" && p.trim()) {
+                const url = p.trim();
+                out.push({ url, name: url.split("/").pop() || "첨부" });
+            } else if (p && typeof p === "object" && "url" in p) {
+                const o = p as { url: string; name?: string };
+                if (typeof o.url === "string" && o.url.trim()) {
+                    const url = o.url.trim();
+                    out.push({ url, name: (o.name && String(o.name).trim()) || url.split("/").pop() || "첨부" });
+                }
+            }
+        }
+        return out;
+    } catch {
+        return [];
+    }
+}
+
 /**
- * 게시글 삭제 (soft delete)
+ * 게시글에서 첨부 링크 한 건 제거 (서버 JSON만 갱신, 파일은 유지)
  */
-export async function deletePost(id: number): Promise<void> {
+export async function removePostAttachmentLink(id: number, attachmentUrl: string): Promise<PostResponse> {
+    const url = new URL(`/api/posts/${id}/attachments/remove`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: attachmentUrl }),
+    }));
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new ApiError(
+            `HTTP ${res.status} ${res.statusText}${text ? ` - ${text.slice(0, 200)}` : ""}`,
+            res.status,
+            text
+        );
+    }
+    return (await res.json()) as PostResponse;
+}
+
+/**
+ * 게시글 삭제 (soft delete). 삭제 사유 필수.
+ */
+export async function deletePost(id: number, deletionReason: string): Promise<void> {
     const url = new URL(`/api/posts/${id}`, API_BASE);
     const res = await fetch(url.toString(), addAuthHeader({
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deletionReason: deletionReason.trim() }),
     }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
@@ -543,15 +593,29 @@ export type CategoryPostCountRow = {
     parentId: number | null;
     depth: number;
     label: string;
+    /** 현재 비삭제 누계 */
     postCount: number;
+    createdInPeriod?: number | null;
+    deletedInPeriod?: number | null;
+    /** 증가−감소, 음수 가능 */
+    netChangeInPeriod?: number | null;
     postFilterCategoryIds: number[];
 };
 
 export type AdminContentStatsResponse = {
     totalPostCount: number;
+    totalCreatedInPeriod?: number | null;
+    totalDeletedInPeriod?: number | null;
+    totalNetChangeInPeriod?: number | null;
     rows: CategoryPostCountRow[];
     uncategorizedPostCount: number;
-    memoCount: number;
+    uncategorizedCreatedInPeriod?: number | null;
+    uncategorizedDeletedInPeriod?: number | null;
+    uncategorizedNetChangeInPeriod?: number | null;
+    memoCumulativeCount: number;
+    memoCreatedInPeriod?: number | null;
+    memoDeletedInPeriod?: number | null;
+    memoNetChangeInPeriod?: number | null;
     rangeStart: string | null;
     rangeEnd: string | null;
     dateFilterApplied: boolean;
@@ -570,6 +634,8 @@ export type PostStatListItem = {
     createdAt: string;
     categoryId: number | null;
     categoryLabel: string;
+    deleted?: boolean;
+    deletionReason?: string | null;
 };
 
 export async function fetchAdminContentStatsPosts(params: {
@@ -589,6 +655,108 @@ export async function fetchAdminContentStatsPosts(params: {
     if (params.end) url.searchParams.set("end", params.end);
     const list = await fetchJson<PostStatListItem[]>(url.toString());
     return list ?? [];
+}
+
+export type MemoStatListItem = {
+    listKey: string;
+    sourceMemoId: number;
+    title: string;
+    createdAt: string;
+    deleted?: boolean;
+    deletedAt?: string | null;
+    deletionReason?: string | null;
+};
+
+export async function fetchAdminContentStatsMemos(params?: { start?: string; end?: string }): Promise<MemoStatListItem[]> {
+    const url = new URL("/api/admin/content-stats/memos", API_BASE);
+    if (params?.start) url.searchParams.set("start", params.start);
+    if (params?.end) url.searchParams.set("end", params.end);
+    const list = await fetchJson<MemoStatListItem[]>(url.toString());
+    return list ?? [];
+}
+
+// --- Header Shortcuts (quick links) ---
+
+export type ShortcutItem = {
+    id: number;
+    name: string;
+    url: string;
+    sortOrder: number;
+};
+
+export type ShortcutGroup = {
+    id: number;
+    name: string;
+    sortOrder: number;
+    items: ShortcutItem[];
+};
+
+export async function fetchShortcuts(): Promise<ShortcutGroup[]> {
+    const url = new URL("/api/shortcuts", API_BASE);
+    const list = await fetchJson<ShortcutGroup[]>(url.toString());
+    return list ?? [];
+}
+
+export async function fetchAdminShortcuts(): Promise<ShortcutGroup[]> {
+    const url = new URL("/api/admin/shortcuts", API_BASE);
+    const list = await fetchJson<ShortcutGroup[]>(url.toString());
+    return list ?? [];
+}
+
+export async function createShortcutGroup(payload: { name: string; sortOrder?: number }): Promise<ShortcutGroup> {
+    const url = new URL("/api/admin/shortcuts/groups", API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    }));
+    if (!res.ok) throw new ApiError("그룹 생성 실패", res.status, await res.text().catch(() => ""));
+    return (await res.json()) as ShortcutGroup;
+}
+
+export async function updateShortcutGroup(groupId: number, payload: { name: string; sortOrder?: number }): Promise<ShortcutGroup> {
+    const url = new URL(`/api/admin/shortcuts/groups/${groupId}`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    }));
+    if (!res.ok) throw new ApiError("그룹 수정 실패", res.status, await res.text().catch(() => ""));
+    return (await res.json()) as ShortcutGroup;
+}
+
+export async function deleteShortcutGroup(groupId: number): Promise<void> {
+    const url = new URL(`/api/admin/shortcuts/groups/${groupId}`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({ method: "DELETE" }));
+    if (!res.ok) throw new ApiError("그룹 삭제 실패", res.status, await res.text().catch(() => ""));
+}
+
+export async function createShortcutItem(groupId: number, payload: { name: string; url: string; sortOrder?: number }): Promise<ShortcutItem> {
+    const url = new URL(`/api/admin/shortcuts/groups/${groupId}/items`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    }));
+    if (!res.ok) throw new ApiError("링크 생성 실패", res.status, await res.text().catch(() => ""));
+    return (await res.json()) as ShortcutItem;
+}
+
+export async function updateShortcutItem(itemId: number, payload: { name: string; url: string; sortOrder?: number }): Promise<ShortcutItem> {
+    const url = new URL(`/api/admin/shortcuts/items/${itemId}`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    }));
+    if (!res.ok) throw new ApiError("링크 수정 실패", res.status, await res.text().catch(() => ""));
+    return (await res.json()) as ShortcutItem;
+}
+
+export async function deleteShortcutItem(itemId: number): Promise<void> {
+    const url = new URL(`/api/admin/shortcuts/items/${itemId}`, API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({ method: "DELETE" }));
+    if (!res.ok) throw new ApiError("링크 삭제 실패", res.status, await res.text().catch(() => ""));
 }
 
 /** 실습 결과 작성 요청 (관리자 → 사용자) */
@@ -1136,9 +1304,13 @@ export async function updateMemo(
     return res.json() as Promise<MemoDetail>;
 }
 
-export async function deleteMemo(id: number): Promise<void> {
+export async function deleteMemo(id: number, deletionReason: string): Promise<void> {
     const url = new URL(`/api/memos/${id}`, API_BASE);
-    const res = await fetch(url.toString(), addAuthHeader({ method: "DELETE" }));
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deletionReason: deletionReason.trim() }),
+    }));
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new ApiError(
@@ -1161,6 +1333,8 @@ export type CategoryItem = {
     sortOrder: number;
     /** 게시글 등록 시 관리자만 선택 가능(일반 사용자 드롭다운에서 제외). 카테고리 관리 페이지에서 설정 */
     adminOnly?: boolean;
+    /** 사이드바에 노출 여부 */
+    sidebarVisible?: boolean;
 };
 
 export type CategoryBulkUpdateItem = {
@@ -1170,6 +1344,7 @@ export type CategoryBulkUpdateItem = {
     depth: number;
     sortOrder: number;
     adminOnly?: boolean;
+    sidebarVisible?: boolean;
 };
 
 export type UserItem = {
@@ -1288,9 +1463,10 @@ export async function fetchCategories(): Promise<CategoryItem[]> {
     const url = new URL("/api/categories", API_BASE);
     try {
         const raw = await fetchJson<CategoryItem[]>(url.toString());
-        return (raw || []).map((c: CategoryItem & { admin_only?: boolean }) => ({
+        return (raw || []).map((c: CategoryItem & { admin_only?: boolean; sidebar_visible?: boolean }) => ({
             ...c,
             adminOnly: c.adminOnly === true || c.admin_only === true,
+            sidebarVisible: c.sidebarVisible !== undefined ? c.sidebarVisible : c.sidebar_visible !== undefined ? c.sidebar_visible : true,
         }));
     } catch (e) {
         console.error("fetchCategories error:", e);

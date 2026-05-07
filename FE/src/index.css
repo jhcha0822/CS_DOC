@@ -194,6 +194,12 @@ html[data-theme="dark"] .app-layout .file-action-label {
   border-color: #666 !important;
 }
 
+/* 사이드바: 포커스 링 제거(항상 동일한 배경·글자색 유지) */
+.app-layout aside .side-nav-plain a:focus,
+.app-layout aside .side-nav-plain a:focus-visible {
+  outline: none !important;
+}
+
 /* Markdown preview (detail page): images fit container, limit size, click to open modal */
 .markdown-preview img {
   max-width: min(100%, 720px);

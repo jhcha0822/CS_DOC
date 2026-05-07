@@ -12,7 +12,8 @@ public record CategoryResponse(
         String parentLabel,
         int depth,
         int sortOrder,
-        @JsonProperty("adminOnly") boolean adminOnly
+        @JsonProperty("adminOnly") boolean adminOnly,
+        @JsonProperty("sidebarVisible") boolean sidebarVisible
 ) {
 
     public static CategoryResponse from(com.fasoo.cs_doc.category.domain.Category c, Map<Long, String> parentLabels) {
@@ -32,7 +33,8 @@ public record CategoryResponse(
                 parentLabel,
                 c.getDepth(),
                 c.getSortOrder(),
-                c.isAdminOnly()
+                c.isAdminOnly(),
+                c.isSidebarVisible()
         );
     }
 }

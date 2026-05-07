@@ -34,9 +34,13 @@ export default function CategoryManagePage() {
         try {
             const list = await fetchCategories();
             const deduped = dedupeById(list || []);
-            const withAdminOnly = deduped.map((c) => ({ ...c, adminOnly: c.adminOnly === true }));
-            setOriginalItems(withAdminOnly);
-            setItems(withAdminOnly);
+            const withFlags = deduped.map((c) => ({
+                ...c,
+                adminOnly: c.adminOnly === true,
+                sidebarVisible: c.sidebarVisible !== false,
+            }));
+            setOriginalItems(withFlags);
+            setItems(withFlags);
             setHasChanges(false);
             setSelectedId(null);
         } catch (e) {
@@ -267,6 +271,7 @@ export default function CategoryManagePage() {
                 depth: c.depth,
                 sortOrder: c.sortOrder,
                 adminOnly: c.adminOnly ?? false,
+                sidebarVisible: c.sidebarVisible !== false,
             }));
             await bulkUpdateCategories(bulkItems);
             await load();
@@ -482,13 +487,14 @@ export default function CategoryManagePage() {
                         <thead>
                             <tr style={{ borderBottom: "1px solid #444", background: "#f5f5f5" }}>
                                 <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700 }}>카테고리</th>
+                                <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700, width: 130 }}>사이드바 노출</th>
                                 <th style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700, width: 140 }}>관리자 권한 제어</th>
                             </tr>
                         </thead>
                         <tbody>
                             {sortedItems.length === 0 ? (
                                 <tr>
-                                    <td colSpan={2} style={{ padding: 24, textAlign: "center", opacity: 0.8 }}>
+                                    <td colSpan={3} style={{ padding: 24, textAlign: "center", opacity: 0.8 }}>
                                         카테고리가 없습니다. 위에서 추가해 보세요.
                                     </td>
                                 </tr>
@@ -497,6 +503,7 @@ export default function CategoryManagePage() {
                                     const isSelected = selectedId === cat.id;
                                     const currentItem = items.find((c) => c.id === cat.id) ?? cat;
                                     const adminOnly = currentItem.adminOnly ?? false;
+                                    const sidebarVisible = currentItem.sidebarVisible !== false;
                                     return (
                                         <tr
                                             key={cat.id}
@@ -540,6 +547,22 @@ export default function CategoryManagePage() {
                                                 <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", margin: 0 }}>
                                                     <input
                                                         type="checkbox"
+                                                        checked={sidebarVisible}
+                                                        onChange={(e) => {
+                                                            const updated = items.map((c) =>
+                                                                c.id === cat.id ? { ...c, sidebarVisible: e.target.checked } : c
+                                                            );
+                                                            setItems(updated);
+                                                            setHasChanges(true);
+                                                        }}
+                                                        style={{ width: 18, height: 18, cursor: "pointer" }}
+                                                    />
+                                                </label>
+                                            </td>
+                                            <td style={{ padding: "12px 14px", verticalAlign: "middle" }} onClick={(e) => e.stopPropagation()}>
+                                                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", margin: 0 }}>
+                                                    <input
+                                                        type="checkbox"
                                                         checked={adminOnly}
                                                         onChange={(e) => {
                                                             const updated = items.map((c) =>
@@ -563,7 +586,7 @@ export default function CategoryManagePage() {
             {sortedItems.length > 0 && (
                 <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
                     <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>
-                        관리자 권한 제어 체크 시 해당 카테고리에는 관리자만 등록 가능
+                        사이드바 노출 체크 해제 시 좌측 메뉴에서 숨김 처리됩니다. 관리자 권한 제어 체크 시 해당 카테고리에는 관리자만 등록 가능
                     </p>
                 </div>
             )}

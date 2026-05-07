@@ -7,6 +7,7 @@ import MarkdownPreview from "@uiw/react-markdown-preview";
 import "@uiw/react-markdown-preview/markdown.css";
 import { markdownPreviewImageComponents } from "../components/MarkdownImageWithModal";
 import ErrorModal from "../components/ErrorModal";
+import DeletePostModal from "../components/DeletePostModal";
 
 function formatKST(iso: string) {
     const d = new Date(iso);
@@ -31,6 +32,7 @@ export default function PostDetailPage() {
     const [post, setPost] = useState<PostDetail | null>(null);
     const [categories, setCategories] = useState<CategoryItem[]>([]);
     const [deleting, setDeleting] = useState(false);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const viewCountIncrementedRef = useRef<number | null>(null);
     
     // 댓글 관련 상태
@@ -137,29 +139,28 @@ export default function PostDetailPage() {
     const listUrl = `/posts?${createSearchParams(listSearchParams()).toString()}`;
     const editUrl = `/posts/${postId}/edit?${createSearchParams(listSearchParams()).toString()}`;
 
-    const handleDelete = useCallback(async () => {
-        if (!window.confirm("정말 이 게시글을 삭제하시겠습니까?\n삭제된 게시글은 목록에서 보이지 않지만 데이터베이스에는 유지되어 추후 복구할 수 있습니다.")) {
-            return;
-        }
-
-        setDeleting(true);
-        setError(null);
-        try {
-            await deletePost(postId);
-            // 삭제 성공 시 목록으로 이동
-            navigate(listUrl);
-        } catch (e) {
-            const msg =
-                e instanceof ApiError
-                    ? e.message
-                    : e instanceof Error
-                      ? e.message
-                      : "삭제에 실패했습니다.";
-            setError(msg);
-        } finally {
-            setDeleting(false);
-        }
-    }, [postId, listUrl, navigate]);
+    const performDelete = useCallback(
+        async (deletionReason: string) => {
+            setDeleting(true);
+            setError(null);
+            try {
+                await deletePost(postId, deletionReason);
+                setDeleteModalOpen(false);
+                navigate(listUrl);
+            } catch (e) {
+                const msg =
+                    e instanceof ApiError
+                        ? e.message
+                        : e instanceof Error
+                          ? e.message
+                          : "삭제에 실패했습니다.";
+                setError(msg);
+            } finally {
+                setDeleting(false);
+            }
+        },
+        [postId, listUrl, navigate]
+    );
 
     useEffect(() => {
         let cancelled = false;
@@ -299,7 +300,8 @@ export default function PostDetailPage() {
 
                 <div className="header-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
                     <button
-                        onClick={handleDelete}
+                        type="button"
+                        onClick={() => setDeleteModalOpen(true)}
                         disabled={deleting}
                         style={{
                             width: 90,
@@ -673,6 +675,14 @@ export default function PostDetailPage() {
                     )}
                 </div>
             </div>
+            <DeletePostModal
+                open={deleteModalOpen}
+                onClose={() => {
+                    if (!deleting) setDeleteModalOpen(false);
+                }}
+                onConfirm={performDelete}
+                busy={deleting}
+            />
             <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         </div>
     );

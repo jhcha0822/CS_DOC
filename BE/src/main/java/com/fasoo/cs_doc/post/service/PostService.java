@@ -31,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -149,6 +150,79 @@ public class PostService {
                 .orElse(null);
     }
 
+    /** FE searchIn: title | content | author | all */
+    private enum ListSearchScope {
+        TITLE, CONTENT, AUTHOR, ALL
+    }
+
+    private ListSearchScope parseListSearchScope(String searchIn) {
+        if (searchIn == null || searchIn.isBlank()) {
+            return ListSearchScope.TITLE;
+        }
+        return switch (searchIn.trim().toLowerCase(Locale.ROOT)) {
+            case "content" -> ListSearchScope.CONTENT;
+            case "author" -> ListSearchScope.AUTHOR;
+            case "all" -> ListSearchScope.ALL;
+            default -> ListSearchScope.TITLE;
+        };
+    }
+
+    private boolean stringContainsLower(String s, String needleLower) {
+        if (s == null || s.isBlank() || needleLower.isEmpty()) {
+            return false;
+        }
+        return s.toLowerCase(Locale.ROOT).contains(needleLower);
+    }
+
+    private boolean contentBodyMatches(Post p, String needleLower) {
+        if (stringContainsLower(p.getSummaryTitle(), needleLower)) {
+            return true;
+        }
+        String body = storage.readOptional(p.getContentMdPath());
+        return stringContainsLower(body, needleLower);
+    }
+
+    private boolean authorNameMatches(Post p, String needleLower, Map<Long, String> authorNameById) {
+        if (p.getCreatedBy() == null) {
+            return false;
+        }
+        String name = authorNameById.get(p.getCreatedBy());
+        return stringContainsLower(name, needleLower);
+    }
+
+    private boolean postMatchesListSearch(Post p, String needleLower, ListSearchScope scope, Map<Long, String> authorNameById) {
+        return switch (scope) {
+            case TITLE -> stringContainsLower(p.getTitle(), needleLower);
+            case CONTENT -> contentBodyMatches(p, needleLower);
+            case AUTHOR -> authorNameMatches(p, needleLower, authorNameById);
+            case ALL ->
+                    stringContainsLower(p.getTitle(), needleLower)
+                            || stringContainsLower(p.getSummaryTitle(), needleLower)
+                            || contentBodyMatches(p, needleLower)
+                            || authorNameMatches(p, needleLower, authorNameById);
+        };
+    }
+
+    private List<Post> filterPostsBySearchScope(List<Post> posts, String kw, ListSearchScope scope) {
+        if (posts == null || posts.isEmpty() || kw == null || kw.isBlank()) {
+            return posts == null ? List.of() : posts;
+        }
+        String needleLower = kw.toLowerCase(Locale.ROOT);
+        Map<Long, String> authorNameById = new HashMap<>();
+        if (scope == ListSearchScope.AUTHOR || scope == ListSearchScope.ALL) {
+            java.util.Set<Long> ids = posts.stream()
+                    .map(Post::getCreatedBy)
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.toSet());
+            if (!ids.isEmpty()) {
+                memberRepository.findAllById(ids).forEach(m -> authorNameById.put(m.getId(), m.getName()));
+            }
+        }
+        return posts.stream()
+                .filter(p -> postMatchesListSearch(p, needleLower, scope, authorNameById))
+                .toList();
+    }
+
     private PostResponse toResponse(Post post) {
         return new PostResponse(
                 post.getId(),
@@ -168,6 +242,8 @@ public class PostService {
     @Transactional(readOnly = true)
     public PageResponse<PostListItemResponse> list(Pageable pageable, String keyword, String searchIn, List<String> categories, Long categoryId, PostKind postKind) {
         String kw = (keyword == null) ? null : keyword.trim();
+        ListSearchScope searchScope = parseListSearchScope(searchIn);
+        boolean useTitleDbFilter = kw != null && !kw.isBlank() && searchScope == ListSearchScope.TITLE;
         boolean isFirstPage = pageable.getPageNumber() == 0;
         
         // 공지사항 조회 (1페이지에만, categoryId가 null일 때만 - 특정 카테고리 선택 시에는 공지사항 제외, 삭제되지 않은 것만)
@@ -228,7 +304,8 @@ public class PostService {
             }
 
             // category_id 기반 + legacy category(enum) 별도 조회 후 병합 (Sort만: DB TOP 상한으로 일부만 오는 문제 방지)
-            if (kw == null || kw.isBlank()) {
+            // 제목 검색만 DB LIKE로 좁히고, 내용/작성자/모두는 후보 전체를 불러온 뒤 메모리에서 필터(본문은 MD 파일)
+            if (kw == null || kw.isBlank() || !useTitleDbFilter) {
                 // 공지사항 카테고리인 경우 공지사항도 포함하여 조회
                 if (isNoticeCategory) {
                     normalPosts = postRepository.findByDeletedFalseAndCategoryIdIn(targetCategoryIds, listSort);
@@ -264,7 +341,7 @@ public class PostService {
         } else {
             // categoryId가 없으면 전체 조회 (공지사항 제외, 삭제되지 않은 것만)
             // 메모리 페이징을 위해 전체 행을 Sort 기준으로 조회 (고정 TOP/페이지 상한 미사용)
-            if (kw == null || kw.isBlank()) {
+            if (kw == null || kw.isBlank() || !useTitleDbFilter) {
                 normalPosts = postRepository.findByIsNoticeFalseAndDeletedFalse(listSort);
             } else {
                 normalPosts = postRepository.findByIsNoticeFalseAndDeletedFalseAndTitleContainingIgnoreCase(kw, listSort);
@@ -280,6 +357,11 @@ public class PostService {
                         .toList();
                 legacyPosts.addAll(batch);
             }
+        }
+
+        if (kw != null && !kw.isBlank() && !useTitleDbFilter) {
+            normalPosts = filterPostsBySearchScope(normalPosts, kw, searchScope);
+            legacyPosts = filterPostsBySearchScope(legacyPosts, kw, searchScope);
         }
 
         List<PostListItemResponse> normalItems = normalPosts.stream()
@@ -955,6 +1037,43 @@ public class PostService {
     }
 
     /**
+     * 게시글에서 첨부 항목 한 건을 JSON에서만 제거합니다. 스토리지 파일은 삭제하지 않습니다(이력·직접 URL 호환).
+     */
+    @Transactional
+    public PostResponse removeAttachmentLink(Long id, String attachmentUrl, Long userId) {
+        if (attachmentUrl == null || attachmentUrl.isBlank()) {
+            throw new IllegalArgumentException("url is required");
+        }
+        String target = attachmentUrl.trim();
+        Post post = postRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Post not found: " + id));
+        if (post.getDeleted()) {
+            throw new NotFoundException("Post not found: " + id);
+        }
+        List<AttachmentInfo> infos = parseAttachmentInfos(post.getAttachments());
+        List<AttachmentInfo> filtered = infos.stream()
+                .filter(i -> !attachmentUrlsEqual(i.url(), target))
+                .toList();
+        if (filtered.size() == infos.size()) {
+            throw new IllegalArgumentException("No matching attachment on this post");
+        }
+        post.changeAttachments(buildAttachmentsJson(filtered));
+        if (userId != null) {
+            post.changeUpdatedBy(userId);
+        }
+        postRepository.save(post);
+        savePostVersionForMetadataChange(post.getId(), post.getTitle(), post.getUpdatedBy());
+        return toResponse(post);
+    }
+
+    private boolean attachmentUrlsEqual(String stored, String requested) {
+        if (stored == null || requested == null) {
+            return false;
+        }
+        return stored.trim().equalsIgnoreCase(requested.trim());
+    }
+
+    /**
      * (기존) FE 임시용: category 목록만 받아서 전체 조회(페이징 없음)
      * @deprecated categoryId 기반으로 변경되었습니다.
      */
@@ -1228,7 +1347,7 @@ public class PostService {
      * 삭제된 게시글은 목록에서 보이지 않지만 데이터베이스에는 유지되어 추후 복구 가능합니다.
      */
     @Transactional
-    public void delete(Long id, Long userId) {
+    public void delete(Long id, Long userId, String deletionReason) {
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Post not found: " + id));
         
@@ -1236,8 +1355,13 @@ public class PostService {
         if (post.getDeleted()) {
             return;
         }
-        
-        post.markAsDeleted();
+        if (deletionReason == null || deletionReason.isBlank()) {
+            throw new IllegalArgumentException("삭제 사유를 입력해 주세요.");
+        }
+        post.markAsDeleted(deletionReason.trim());
+        if (userId != null) {
+            post.changeUpdatedBy(userId);
+        }
         postRepository.save(post);
     }
 }

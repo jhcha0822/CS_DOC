@@ -1,6 +1,7 @@
 package com.fasoo.cs_doc.admin.controller;
 
 import com.fasoo.cs_doc.admin.dto.AdminContentStatsResponse;
+import com.fasoo.cs_doc.admin.dto.MemoStatListItem;
 import com.fasoo.cs_doc.admin.dto.PostStatListItem;
 import com.fasoo.cs_doc.admin.service.AdminStatsService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,5 +44,15 @@ public class AdminStatsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end
     ) {
         return adminStatsService.listPostsForStats(userId, uncategorized, categoryIds, start, end);
+    }
+
+    @Operation(summary = "통계 화면용: 메모 목록(기간 선택 시 신규·삭제 보관본, 관리자 전용)")
+    @GetMapping("/content-stats/memos")
+    public List<MemoStatListItem> contentStatsMemos(
+            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate start,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate end
+    ) {
+        return adminStatsService.listMemosForStats(userId, start, end);
     }
 }

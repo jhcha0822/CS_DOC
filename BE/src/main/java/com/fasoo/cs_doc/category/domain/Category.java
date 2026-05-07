@@ -31,6 +31,10 @@ public class Category {
     @Column(name = "admin_only", nullable = false)
     private boolean adminOnly = false;
 
+    /** 사이드바에 노출 여부(기본 노출). 카테고리 관리 페이지에서 체크박스로 설정 */
+    @Column(name = "sidebar_visible", nullable = false)
+    private boolean sidebarVisible = true;
+
     protected Category() {}
 
     public Category(String code, String label, Long parentId, int depth, int sortOrder) {
@@ -57,6 +61,7 @@ public class Category {
     public int getDepth() { return depth; }
     public int getSortOrder() { return sortOrder; }
     public boolean isAdminOnly() { return adminOnly; }
+    public boolean isSidebarVisible() { return sidebarVisible; }
 
     public void setCode(String code) { this.code = code; }
     public void setLabel(String label) { this.label = label; }
@@ -64,4 +69,5 @@ public class Category {
     public void setDepth(int depth) { this.depth = depth; }
     public void setSortOrder(int sortOrder) { this.sortOrder = sortOrder; }
     public void setAdminOnly(boolean adminOnly) { this.adminOnly = adminOnly; }
+    public void setSidebarVisible(boolean sidebarVisible) { this.sidebarVisible = sidebarVisible; }
 }

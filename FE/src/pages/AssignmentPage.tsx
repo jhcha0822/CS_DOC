@@ -25,6 +25,7 @@ import {
 } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
 import ErrorModal from "../components/ErrorModal";
+import DeletePostModal from "../components/DeletePostModal";
 import AssignmentRequestFormModal from "../components/AssignmentRequestFormModal";
 
 
@@ -78,6 +79,7 @@ export default function AssignmentPage() {
     const [saving, setSaving] = useState<string | null>(null);
     const [categories, setCategories] = useState<CategoryItem[]>([]);
     const [deleting, setDeleting] = useState(false);
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [answerDraft, setAnswerDraft] = useState("");
     /** 세부 실습별 답안 초안 (taskId -> markdown). tasks가 있을 때만 사용 */
     const [taskAnswerDrafts, setTaskAnswerDrafts] = useState<Record<number, string>>({});
@@ -124,21 +126,24 @@ export default function AssignmentPage() {
         return path;
     }, [categories]);
 
-    const handleDelete = useCallback(async () => {
-        if (!postId) return;
-        if (!window.confirm("정말 이 게시글을 삭제하시겠습니까?\n삭제된 게시글은 목록에서 보이지 않지만 데이터베이스에는 유지되어 추후 복구할 수 있습니다.")) {
-            return;
-        }
-        setDeleting(true);
-        try {
-            await deletePost(postId);
-            navigate("/posts");
-        } catch (e) {
-            alert(e instanceof Error ? e.message : "삭제 실패");
-        } finally {
-            setDeleting(false);
-        }
-    }, [postId, navigate]);
+    const performDelete = useCallback(
+        async (deletionReason: string) => {
+            if (!postId) return;
+            setDeleting(true);
+            setError(null);
+            try {
+                await deletePost(postId, deletionReason);
+                setDeleteModalOpen(false);
+                navigate("/posts");
+            } catch (e) {
+                const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "삭제에 실패했습니다.";
+                setError(msg);
+            } finally {
+                setDeleting(false);
+            }
+        },
+        [postId, navigate]
+    );
 
     useEffect(() => {
         if (postId == null || Number.isNaN(postId)) {
@@ -504,7 +509,8 @@ export default function AssignmentPage() {
                                 실습 결과 요청
                             </button>
                             <button
-                                onClick={handleDelete}
+                                type="button"
+                                onClick={() => setDeleteModalOpen(true)}
                                 disabled={deleting}
                                 style={{
                                     width: 90,
@@ -1282,6 +1288,14 @@ export default function AssignmentPage() {
                 </section>
             )}
         </div>
+        <DeletePostModal
+            open={deleteModalOpen}
+            onClose={() => {
+                if (!deleting) setDeleteModalOpen(false);
+            }}
+            onConfirm={performDelete}
+            busy={deleting}
+        />
         <ErrorModal open={!!error} message={error ?? ""} onClose={() => setError(null)} />
         {data && postId != null && (
             <AssignmentRequestFormModal

@@ -118,7 +118,18 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             Pageable pageable
     );
 
+    /** 관리자 통계: 삭제 여부 무관, 카테고리·등록일 범위 */
+    Page<Post> findByCategoryIdInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            Collection<Long> categoryIds,
+            LocalDateTime createdAtAfterInclusive,
+            LocalDateTime createdAtBeforeExclusive,
+            Pageable pageable
+    );
+
     Page<Post> findByDeletedFalseAndCategoryIdIsNull(Pageable pageable);
+
+    /** 관리자 통계: 삭제 여부 무관, category_id IS NULL */
+    Page<Post> findByCategoryIdIsNull(Pageable pageable);
 
     Page<Post> findByDeletedFalseAndCategoryIdIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
             LocalDateTime createdAtAfterInclusive,
@@ -126,8 +137,48 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             Pageable pageable
     );
 
+    Page<Post> findByCategoryIdIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            LocalDateTime createdAtAfterInclusive,
+            LocalDateTime createdAtBeforeExclusive,
+            Pageable pageable
+    );
+
     /** 실습(과제) 목록 - 관리자 채점 조회용 */
     List<Post> findByDeletedFalseAndPostKindOrderByCreatedAtDesc(PostKind postKind);
+
+    /** 관리자 통계: 기간 내 신규(생성일 기준, 삭제 여부 무관) */
+    long countByCategoryIdInAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            Collection<Long> categoryIds,
+            LocalDateTime createdAtAfterInclusive,
+            LocalDateTime createdAtBeforeExclusive
+    );
+
+    long countByCategoryIdIsNullAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            LocalDateTime createdAtAfterInclusive,
+            LocalDateTime createdAtBeforeExclusive
+    );
+
+    long countByCreatedAtGreaterThanEqualAndCreatedAtLessThan(
+            LocalDateTime createdAtAfterInclusive,
+            LocalDateTime createdAtBeforeExclusive
+    );
+
+    /** 관리자 통계: 기간 내 소프트 삭제 건수(updatedAt 기준, 삭제 처리 시각 근사) */
+    long countByDeletedTrueAndCategoryIdInAndUpdatedAtGreaterThanEqualAndUpdatedAtLessThan(
+            Collection<Long> categoryIds,
+            LocalDateTime updatedAtAfterInclusive,
+            LocalDateTime updatedAtBeforeExclusive
+    );
+
+    long countByDeletedTrueAndCategoryIdIsNullAndUpdatedAtGreaterThanEqualAndUpdatedAtLessThan(
+            LocalDateTime updatedAtAfterInclusive,
+            LocalDateTime updatedAtBeforeExclusive
+    );
+
+    long countByDeletedTrueAndUpdatedAtGreaterThanEqualAndUpdatedAtLessThan(
+            LocalDateTime updatedAtAfterInclusive,
+            LocalDateTime updatedAtBeforeExclusive
+    );
 
     /** 조회수만 증가 (updatedAt 변경 없음. 상세 조회 시 수정 시각이 바뀌는 현상 방지) */
     @Modifying(clearAutomatically = true)

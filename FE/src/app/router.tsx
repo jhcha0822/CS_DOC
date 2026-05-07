@@ -13,6 +13,7 @@ import MemoPage from "../pages/MemoPage";
 import UserManagePage from "../pages/UserManagePage";
 import AssignmentGradesPage from "../pages/AssignmentGradesPage";
 import AdminContentStatsPage from "../pages/AdminContentStatsPage";
+import AdminShortcutsPage from "../pages/AdminShortcutsPage";
 
 export const router = createBrowserRouter([
     { path: "/", element: <Navigate to="/login" replace /> },
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
             { path: "users/manage", element: <UserManagePage /> },
             { path: "admin/assignment-grades", element: <AssignmentGradesPage /> },
             { path: "admin/content-stats", element: <AdminContentStatsPage /> },
+            { path: "admin/shortcuts", element: <AdminShortcutsPage /> },
         ],
     },
 ]);
