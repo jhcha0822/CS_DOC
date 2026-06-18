@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
-import { fetchCategories, type CategoryItem } from "../lib/api";
+import { fetchCategories, fetchSidebarMenuSetting, type CategoryItem, type SidebarMenuSetting } from "../lib/api";
 import { isAdmin } from "../lib/auth";
 
 /** 게시글 목록 공지 행과 동일 — 선택 여부와 관계없이 고정 */
@@ -9,6 +9,9 @@ const NOTICE_NAV_TEXT = "#000000";
 /** 메모 목록과 동일 — 고정 */
 const MEMO_NAV_BG = "#fef9c3";
 const MEMO_NAV_TEXT = "#111827";
+/** TSS AI 테스트 — 선택 여부와 무관하게 배경 고정 (palegreen) */
+const TSS_NAV_BG = "#98fb98";
+const TSS_NAV_TEXT = "#111827";
 
 const CAT_BLUE_BG = "#3B82F6";
 const CAT_BLUE_TEXT = "#ffffff";
@@ -32,19 +35,48 @@ export default function SideNav() {
 
     const [categories, setCategories] = useState<CategoryItem[]>([]);
     const [loading, setLoading] = useState(true);
+    const [menuSetting, setMenuSetting] = useState<SidebarMenuSetting | null>(null);
+
+    const refetch = useMemo(() => {
+        return async () => {
+            try {
+                const [list, setting] = await Promise.all([
+                    fetchCategories().catch(() => [] as CategoryItem[]),
+                    fetchSidebarMenuSetting().catch(() => null),
+                ]);
+                setCategories(list || []);
+                setMenuSetting(setting);
+            } catch {
+                // ignore
+            }
+        };
+    }, []);
 
     useEffect(() => {
-        fetchCategories()
-            .then((list) => {
+        Promise.all([
+            fetchCategories().catch(() => [] as CategoryItem[]),
+            fetchSidebarMenuSetting().catch(() => null),
+        ])
+            .then(([list, setting]) => {
                 setCategories(list || []);
+                setMenuSetting(setting);
                 setLoading(false);
             })
             .catch((e) => {
-                console.error("Failed to fetch categories:", e);
+                console.error("Failed to fetch side nav data:", e);
                 setCategories([]);
+                setMenuSetting(null);
                 setLoading(false);
             });
     }, []);
+
+    useEffect(() => {
+        const onUpdated = () => {
+            refetch();
+        };
+        window.addEventListener("sidebar-menu-setting-updated", onUpdated);
+        return () => window.removeEventListener("sidebar-menu-setting-updated", onUpdated);
+    }, [refetch]);
 
     const sortedCategories = useMemo(() => {
         return [...categories].sort((a, b) => {
@@ -89,6 +121,21 @@ export default function SideNav() {
     };
 
     const onMemo = location.pathname === "/memos" || location.pathname.startsWith("/memos/");
+    const onTssAiTest = location.pathname === "/tss-ai-test";
+    const memoVisible = (menuSetting?.showMemo ?? true) || onMemo;
+    const adminSectionVisible = (menuSetting?.showAdminSection ?? true);
+    const onAdminArea =
+        location.pathname.startsWith("/admin/") ||
+        location.pathname.startsWith("/users/") ||
+        location.pathname.startsWith("/categories/") ||
+        location.pathname.startsWith("/posts/versions");
+    // "메뉴 관리"는 접근 경로가 막히지 않도록 항상 노출(관리자만)
+    const showAdminSectionBlock = isAdmin();
+    const showPostVersions = (menuSetting?.showPostVersions ?? true) || location.pathname.startsWith("/posts/versions");
+    const showAdminContentStats = (menuSetting?.showAdminContentStats ?? true) || location.pathname.startsWith("/admin/content-stats");
+    const showAdminShortcuts = (menuSetting?.showAdminShortcuts ?? true) || location.pathname.startsWith("/admin/shortcuts");
+    const showUserManage = (menuSetting?.showUserManage ?? true) || location.pathname.startsWith("/users/manage");
+    const showAdminAssignmentGrades = (menuSetting?.showAdminAssignmentGrades ?? true) || location.pathname.startsWith("/admin/assignment-grades");
 
     if (loading) {
         return <div style={{ opacity: 0.8 }}>불러오는 중...</div>;
@@ -148,17 +195,32 @@ export default function SideNav() {
                 </div>
             )}
 
-            <Link
-                to="/memos"
-                style={{
-                    ...linkBase,
-                    color: MEMO_NAV_TEXT,
-                    background: MEMO_NAV_BG,
-                    fontWeight: onMemo ? 700 : 600,
-                }}
-            >
-                메모
-            </Link>
+            {memoVisible && (
+                <div>
+                    <Link
+                        to="/memos"
+                        style={{
+                            ...linkBase,
+                            color: MEMO_NAV_TEXT,
+                            background: MEMO_NAV_BG,
+                            fontWeight: onMemo && !onTssAiTest ? 700 : 600,
+                        }}
+                    >
+                        메모
+                    </Link>
+                    <Link
+                        to="/tss-ai-test"
+                        style={{
+                            ...linkBase,
+                            color: TSS_NAV_TEXT,
+                            background: TSS_NAV_BG,
+                            fontWeight: onTssAiTest ? 700 : 600,
+                        }}
+                    >
+                        TSS AI 테스트
+                    </Link>
+                </div>
+            )}
 
             {topLevelCategories.length === 0 && (
                 <div style={{ padding: "10px 12px", fontSize: 12, color: "#6b7280" }}>
@@ -208,22 +270,24 @@ export default function SideNav() {
                 );
             })}
 
-            {isAdmin() && (
+            {showAdminSectionBlock && (
                 <>
                     <div style={{ height: 20 }} />
-                    <div
-                        style={{
-                            fontSize: 11,
-                            color: "#9ca3af",
-                            margin: "12px 0 8px",
-                            paddingLeft: 12,
-                            fontWeight: 500,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.05em",
-                        }}
-                    >
-                        관리
-                    </div>
+                    {(adminSectionVisible || onAdminArea) && (
+                        <div
+                            style={{
+                                fontSize: 11,
+                                color: "#9ca3af",
+                                margin: "12px 0 8px",
+                                paddingLeft: 12,
+                                fontWeight: 500,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.05em",
+                            }}
+                        >
+                            관리
+                        </div>
+                    )}
                     <Link
                         to="/categories/manage"
                         style={{
@@ -232,59 +296,69 @@ export default function SideNav() {
                             background: "transparent",
                         }}
                     >
-                        카테고리 관리
+                        메뉴 관리
                     </Link>
-                    <Link
-                        to="/posts/versions"
-                        style={{
-                            ...linkBase,
-                            color: "#374151",
-                            background: "transparent",
-                        }}
-                    >
-                        버전 이력
-                    </Link>
-                    <Link
-                        to="/admin/content-stats"
-                        style={{
-                            ...linkBase,
-                            color: "#374151",
-                            background: "transparent",
-                        }}
-                    >
-                        게시글 통계
-                    </Link>
-                    <Link
-                        to="/admin/shortcuts"
-                        style={{
-                            ...linkBase,
-                            color: "#374151",
-                            background: "transparent",
-                        }}
-                    >
-                        바로가기 관리
-                    </Link>
-                    <Link
-                        to="/users/manage"
-                        style={{
-                            ...linkBase,
-                            color: "#374151",
-                            background: "transparent",
-                        }}
-                    >
-                        사용자 관리
-                    </Link>
-                    <Link
-                        to="/admin/assignment-grades"
-                        style={{
-                            ...linkBase,
-                            color: "#374151",
-                            background: "transparent",
-                            marginBottom: 0,
-                        }}
-                    >
-                        실습 채점 조회
-                    </Link>
+                    {showPostVersions && (
+                        <Link
+                            to="/posts/versions"
+                            style={{
+                                ...linkBase,
+                                color: "#374151",
+                                background: "transparent",
+                            }}
+                        >
+                            버전 이력
+                        </Link>
+                    )}
+                    {showAdminContentStats && (
+                        <Link
+                            to="/admin/content-stats"
+                            style={{
+                                ...linkBase,
+                                color: "#374151",
+                                background: "transparent",
+                            }}
+                        >
+                            게시글 통계
+                        </Link>
+                    )}
+                    {showAdminShortcuts && (
+                        <Link
+                            to="/admin/shortcuts"
+                            style={{
+                                ...linkBase,
+                                color: "#374151",
+                                background: "transparent",
+                            }}
+                        >
+                            바로가기 관리
+                        </Link>
+                    )}
+                    {showUserManage && (
+                        <Link
+                            to="/users/manage"
+                            style={{
+                                ...linkBase,
+                                color: "#374151",
+                                background: "transparent",
+                            }}
+                        >
+                            사용자 관리
+                        </Link>
+                    )}
+                    {showAdminAssignmentGrades && (
+                        <Link
+                            to="/admin/assignment-grades"
+                            style={{
+                                ...linkBase,
+                                color: "#374151",
+                                background: "transparent",
+                                marginBottom: 0,
+                            }}
+                        >
+                            실습 채점 조회
+                        </Link>
+                    )}
                 </>
             )}
         </div>

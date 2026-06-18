@@ -17,6 +17,7 @@ import {
     type LinkedPostAttachment,
 } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
+import { preferPlainTextOverClipboardImage, refocusTextarea } from "../lib/clipboardPaste";
 import ErrorModal from "../components/ErrorModal";
 import MDEditor from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
@@ -368,22 +369,33 @@ export default function PostEditorPage() {
         async (e: React.ClipboardEvent) => {
             const items = e.clipboardData?.items;
             if (!items) return;
+            if (preferPlainTextOverClipboardImage(e.clipboardData)) return;
+
             for (const item of items) {
                 if (item.type.startsWith("image/")) {
                     e.preventDefault();
                     const file = item.getAsFile();
-                    if (!file) return;
-                    const textarea = editorRef.current?.textarea;
-                    const pos = textarea
-                        ? textarea.selectionStart
-                        : markdown.length;
-                    const end = textarea
-                        ? textarea.selectionEnd
-                        : markdown.length;
+                    const textarea =
+                        editorRef.current?.textarea ??
+                        (e.currentTarget instanceof HTMLElement
+                            ? e.currentTarget.querySelector("textarea")
+                            : null);
+                    const ta = textarea instanceof HTMLTextAreaElement ? textarea : null;
+                    const pos = ta ? ta.selectionStart : markdown.length;
+                    const end = ta ? ta.selectionEnd : markdown.length;
+                    if (!file) {
+                        refocusTextarea(ta, { start: pos, end });
+                        return;
+                    }
                     setImageUploading(true);
                     try {
                         const { url } = await uploadImage(file);
+                        const imageMd = `![](${url})`;
                         insertImageUrl(url, pos, end);
+                        refocusTextarea(ta, {
+                            start: pos + imageMd.length,
+                            end: pos + imageMd.length,
+                        });
                     } catch (err) {
                         const msg =
                             err instanceof ApiError
@@ -392,6 +404,7 @@ export default function PostEditorPage() {
                                   ? err.message
                                   : "이미지 업로드에 실패했습니다.";
                         setError(msg);
+                        refocusTextarea(ta, { start: pos, end });
                     } finally {
                         setImageUploading(false);
                     }
@@ -407,23 +420,39 @@ export default function PostEditorPage() {
         (taskIndex: number) => async (e: React.ClipboardEvent) => {
             const items = e.clipboardData?.items;
             if (!items) return;
+            if (preferPlainTextOverClipboardImage(e.clipboardData)) return;
+
             for (const item of items) {
                 if (item.type.startsWith("image/")) {
                     e.preventDefault();
                     const file = item.getAsFile();
-                    if (!file) return;
+                    const ta =
+                        e.currentTarget instanceof HTMLElement
+                            ? e.currentTarget.querySelector("textarea")
+                            : null;
+                    const taEl = ta instanceof HTMLTextAreaElement ? ta : null;
+
+                    if (!file) {
+                        refocusTextarea(taEl);
+                        return;
+                    }
+
                     setImageUploading(true);
                     try {
                         const { url } = await uploadImage(file);
                         const imageMd = `![](${url})`;
+                        let caretAfter = 0;
                         setAssignmentTasks((prev) =>
                             prev.map((t, i) => {
                                 if (i !== taskIndex) return t;
                                 const prevMd = (t.descriptionMarkdown ?? "").trimEnd();
                                 const sep = prevMd ? "\n" : "";
-                                return { ...t, descriptionMarkdown: prevMd + sep + imageMd };
+                                const next = prevMd + sep + imageMd;
+                                caretAfter = next.length;
+                                return { ...t, descriptionMarkdown: next };
                             })
                         );
+                        refocusTextarea(taEl, { start: caretAfter, end: caretAfter });
                     } catch (err) {
                         const msg =
                             err instanceof ApiError
@@ -432,6 +461,7 @@ export default function PostEditorPage() {
                                   ? err.message
                                   : "이미지 업로드에 실패했습니다.";
                         setError(msg);
+                        refocusTextarea(taEl);
                     } finally {
                         setImageUploading(false);
                     }

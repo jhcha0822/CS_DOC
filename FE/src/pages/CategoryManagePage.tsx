@@ -3,8 +3,11 @@ import {
     bulkUpdateCategories,
     createCategory,
     fetchCategories,
+    fetchAdminSidebarMenuSetting,
+    updateAdminSidebarMenuSetting,
     type CategoryBulkUpdateItem,
     type CategoryItem,
+    type SidebarMenuSetting,
 } from "../lib/api";
 import ErrorModal from "../components/ErrorModal";
 
@@ -27,6 +30,8 @@ export default function CategoryManagePage() {
     const [submitting, setSubmitting] = useState(false);
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
+    const [sidebarSetting, setSidebarSetting] = useState<SidebarMenuSetting | null>(null);
+    const [sidebarDirty, setSidebarDirty] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -43,6 +48,15 @@ export default function CategoryManagePage() {
             setItems(withFlags);
             setHasChanges(false);
             setSelectedId(null);
+
+            // fixed sidebar menus (admin)
+            try {
+                const s = await fetchAdminSidebarMenuSetting();
+                setSidebarSetting(s);
+                setSidebarDirty(false);
+            } catch {
+                setSidebarSetting(null);
+            }
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : "목록을 불러오지 못했습니다.";
             console.error("Failed to load categories:", e);
@@ -260,6 +274,22 @@ export default function CategoryManagePage() {
         setHasChanges(true);
     };
 
+    const saveSidebarMenus = async () => {
+        if (!sidebarSetting) return;
+        setSubmitting(true);
+        setError(null);
+        try {
+            await updateAdminSidebarMenuSetting(sidebarSetting);
+            setSidebarDirty(false);
+            window.dispatchEvent(new Event("sidebar-menu-setting-updated"));
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : "저장에 실패했습니다.";
+            setError(`에러: ${errorMessage}`);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
     const handleSave = async () => {
         setSubmitting(true);
         setError(null);
@@ -288,6 +318,10 @@ export default function CategoryManagePage() {
         setItems([...originalItems]);
         setSelectedId(null);
         setHasChanges(false);
+        if (sidebarSetting) {
+            // reload will restore server state; keep local as-is for now
+            setSidebarDirty(false);
+        }
     };
 
     const topLevelCategories = useMemo(() => getTopLevelCategories(), [getTopLevelCategories]);
@@ -313,8 +347,116 @@ export default function CategoryManagePage() {
     return (
         <div className="p-4">
             <div style={{ marginBottom: 16 }}>
-                <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>카테고리 관리</h1>
+                <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>메뉴 관리</h1>
             </div>
+
+            {sidebarSetting && (
+                <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 14, background: "#fff", marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+                        <div style={{ fontWeight: 900 }}>사이드바 고정 메뉴 노출</div>
+                        <button
+                            type="button"
+                            onClick={saveSidebarMenus}
+                            disabled={!sidebarDirty || submitting}
+                            style={{
+                                height: 36,
+                                padding: "0 14px",
+                                borderRadius: 8,
+                                border: "1px solid #d1d5db",
+                                background: !sidebarDirty || submitting ? "#f3f4f6" : "#2563eb",
+                                color: !sidebarDirty || submitting ? "#9ca3af" : "#fff",
+                                fontWeight: 800,
+                                cursor: !sidebarDirty || submitting ? "not-allowed" : "pointer",
+                                whiteSpace: "nowrap",
+                            }}
+                        >
+                            저장
+                        </button>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+                        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <input
+                                type="checkbox"
+                                checked={sidebarSetting.showMemo}
+                                onChange={(e) => {
+                                    setSidebarSetting((prev) => (prev ? { ...prev, showMemo: e.target.checked } : prev));
+                                    setSidebarDirty(true);
+                                }}
+                            />
+                            메모
+                        </label>
+                        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <input
+                                type="checkbox"
+                                checked={sidebarSetting.showAdminSection}
+                                onChange={(e) => {
+                                    setSidebarSetting((prev) => (prev ? { ...prev, showAdminSection: e.target.checked } : prev));
+                                    setSidebarDirty(true);
+                                }}
+                            />
+                            관리 섹션(전체)
+                        </label>
+                        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <input
+                                type="checkbox"
+                                checked={sidebarSetting.showPostVersions}
+                                onChange={(e) => {
+                                    setSidebarSetting((prev) => (prev ? { ...prev, showPostVersions: e.target.checked } : prev));
+                                    setSidebarDirty(true);
+                                }}
+                            />
+                            버전 이력
+                        </label>
+                        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <input
+                                type="checkbox"
+                                checked={sidebarSetting.showAdminContentStats}
+                                onChange={(e) => {
+                                    setSidebarSetting((prev) => (prev ? { ...prev, showAdminContentStats: e.target.checked } : prev));
+                                    setSidebarDirty(true);
+                                }}
+                            />
+                            게시글 통계
+                        </label>
+                        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <input
+                                type="checkbox"
+                                checked={sidebarSetting.showAdminShortcuts}
+                                onChange={(e) => {
+                                    setSidebarSetting((prev) => (prev ? { ...prev, showAdminShortcuts: e.target.checked } : prev));
+                                    setSidebarDirty(true);
+                                }}
+                            />
+                            바로가기 관리
+                        </label>
+                        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <input
+                                type="checkbox"
+                                checked={sidebarSetting.showUserManage}
+                                onChange={(e) => {
+                                    setSidebarSetting((prev) => (prev ? { ...prev, showUserManage: e.target.checked } : prev));
+                                    setSidebarDirty(true);
+                                }}
+                            />
+                            사용자 관리
+                        </label>
+                        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <input
+                                type="checkbox"
+                                checked={sidebarSetting.showAdminAssignmentGrades}
+                                onChange={(e) => {
+                                    setSidebarSetting((prev) => (prev ? { ...prev, showAdminAssignmentGrades: e.target.checked } : prev));
+                                    setSidebarDirty(true);
+                                }}
+                            />
+                            실습 채점 조회
+                        </label>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
+                        숨김 설정을 하더라도, 현재 접속 중인 메뉴는 사이드바에서 사라지지 않게 처리됩니다.
+                    </div>
+                </div>
+            )}
 
             <div
                 style={{

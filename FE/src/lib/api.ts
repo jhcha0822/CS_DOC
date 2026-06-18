@@ -60,6 +60,8 @@ export type PostListResponse = {
     totalPages?: number;
     hasNext?: boolean;
     hasPrevious?: boolean;
+    /** 전체 목록에서만: 1페이지 상단 고정 공지 건수 */
+    pinnedNoticeCount?: number | null;
 };
 
 export type PostDetailAssignmentTask = {
@@ -109,7 +111,7 @@ export class ApiError extends Error {
 /**
  * 인증 헤더를 추가한 RequestInit 반환
  */
-function addAuthHeader(init?: RequestInit): RequestInit {
+export function addAuthHeader(init?: RequestInit): RequestInit {
     const headers = new Headers(init?.headers);
     if (typeof window !== "undefined") {
         const userStr = localStorage.getItem("cs_doc_user");
@@ -1472,6 +1474,39 @@ export async function fetchCategories(): Promise<CategoryItem[]> {
         console.error("fetchCategories error:", e);
         throw e;
     }
+}
+
+// --- Sidebar menu visibility (fixed menus) ---
+
+export type SidebarMenuSetting = {
+    showMemo: boolean;
+    showAdminSection: boolean;
+    showPostVersions: boolean;
+    showUserManage: boolean;
+    showAdminShortcuts: boolean;
+    showAdminContentStats: boolean;
+    showAdminAssignmentGrades: boolean;
+};
+
+export async function fetchSidebarMenuSetting(): Promise<SidebarMenuSetting> {
+    const url = new URL("/api/sidebar-menus", API_BASE);
+    return fetchJson<SidebarMenuSetting>(url.toString());
+}
+
+export async function fetchAdminSidebarMenuSetting(): Promise<SidebarMenuSetting> {
+    const url = new URL("/api/admin/sidebar-menus", API_BASE);
+    return fetchJson<SidebarMenuSetting>(url.toString());
+}
+
+export async function updateAdminSidebarMenuSetting(payload: Partial<SidebarMenuSetting>): Promise<SidebarMenuSetting> {
+    const url = new URL("/api/admin/sidebar-menus", API_BASE);
+    const res = await fetch(url.toString(), addAuthHeader({
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    }));
+    if (!res.ok) throw new ApiError("사이드바 메뉴 설정 저장 실패", res.status, await res.text().catch(() => ""));
+    return res.json() as Promise<SidebarMenuSetting>;
 }
 
 export async function createCategory(payload: { label: string; parentId?: number | null }): Promise<CategoryItem> {

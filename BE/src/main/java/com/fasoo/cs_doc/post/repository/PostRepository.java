@@ -68,6 +68,8 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     // 공지사항 조회 (삭제되지 않은 것만)
     List<Post> findByIsNoticeTrueAndDeletedFalseOrderByCreatedAtDesc();
+
+    long countByIsNoticeTrueAndDeletedFalse();
     
     // 삭제된 게시글 조회 (버전 이력 페이지용)
     Page<Post> findByDeletedTrue(Pageable pageable);

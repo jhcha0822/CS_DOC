@@ -24,6 +24,7 @@ import {
     type TaskScoreItem,
 } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
+import { preferPlainTextOverClipboardImage, refocusTextarea } from "../lib/clipboardPaste";
 import ErrorModal from "../components/ErrorModal";
 import DeletePostModal from "../components/DeletePostModal";
 import AssignmentRequestFormModal from "../components/AssignmentRequestFormModal";
@@ -380,17 +381,49 @@ export default function AssignmentPage() {
         (target: "single" | number) => async (e: React.ClipboardEvent) => {
             const items = e.clipboardData?.items;
             if (!items) return;
+            if (preferPlainTextOverClipboardImage(e.clipboardData)) return;
+
             for (const item of items) {
                 if (item.type.startsWith("image/")) {
                     e.preventDefault();
                     const file = item.getAsFile();
-                    if (!file) return;
+                    const ta =
+                        e.currentTarget instanceof HTMLElement
+                            ? e.currentTarget.querySelector("textarea")
+                            : null;
+                    const taEl = ta instanceof HTMLTextAreaElement ? ta : null;
+
+                    if (!file) {
+                        refocusTextarea(taEl);
+                        return;
+                    }
+
                     setImageUploading(true);
                     try {
                         const { url } = await uploadImage(file);
-                        insertImageIntoAnswerDraft(url, target);
+                        const imageMd = `![](${url})`;
+                        let caretAfter = 0;
+                        if (target === "single") {
+                            setAnswerDraft((prev) => {
+                                const p = (prev ?? "").trimEnd();
+                                const sep = p ? "\n" : "";
+                                const next = p + sep + imageMd;
+                                caretAfter = next.length;
+                                return next;
+                            });
+                        } else {
+                            setTaskAnswerDrafts((prev) => {
+                                const p = (prev[target] ?? "").trimEnd();
+                                const sep = p ? "\n" : "";
+                                const next = p + sep + imageMd;
+                                caretAfter = next.length;
+                                return { ...prev, [target]: next };
+                            });
+                        }
+                        refocusTextarea(taEl, { start: caretAfter, end: caretAfter });
                     } catch (err) {
                         alert(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "이미지 업로드에 실패했습니다.");
+                        refocusTextarea(taEl);
                     } finally {
                         setImageUploading(false);
                     }
@@ -398,7 +431,7 @@ export default function AssignmentPage() {
                 }
             }
         },
-        [insertImageIntoAnswerDraft]
+        [uploadImage]
     );
 
     const listSearchParams = useCallback(() => {

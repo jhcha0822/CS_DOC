@@ -11,6 +11,7 @@ import {
 } from "../lib/api";
 import { ApiError } from "../lib/api";
 import { getCurrentUser } from "../lib/auth";
+import { preferPlainTextOverClipboardImage, refocusTextarea } from "../lib/clipboardPaste";
 import ErrorModal from "../components/ErrorModal";
 import DeletePostModal from "../components/DeletePostModal";
 
@@ -271,11 +272,17 @@ export default function MemoPage() {
     }, []);
 
     const handleNewBodyPaste = useCallback(
-        async (e: React.ClipboardEvent) => {
+        async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
             const items = e.clipboardData?.items;
             if (!items) return;
+            if (preferPlainTextOverClipboardImage(e.clipboardData)) return;
+
+            const ta = e.currentTarget;
+            const selStart = ta.selectionStart;
+            const selEnd = ta.selectionEnd;
+
             for (const item of items) {
-                if (item.kind === "file" && item.type.startsWith("image/")) {
+                if (item.type.startsWith("image/")) {
                     e.preventDefault();
                     const file = item.getAsFile();
                     if (file && newImages.length < MAX_IMAGES) {
@@ -286,6 +293,7 @@ export default function MemoPage() {
                             setError(err instanceof ApiError ? err.message : "이미지 업로드 실패");
                         }
                     }
+                    refocusTextarea(ta, { start: selStart, end: selEnd });
                     return;
                 }
             }
@@ -294,11 +302,17 @@ export default function MemoPage() {
     );
 
     const handleEditBodyPaste = useCallback(
-        async (e: React.ClipboardEvent) => {
+        async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
             const items = e.clipboardData?.items;
             if (!items) return;
+            if (preferPlainTextOverClipboardImage(e.clipboardData)) return;
+
+            const ta = e.currentTarget;
+            const selStart = ta.selectionStart;
+            const selEnd = ta.selectionEnd;
+
             for (const item of items) {
-                if (item.kind === "file" && item.type.startsWith("image/")) {
+                if (item.type.startsWith("image/")) {
                     e.preventDefault();
                     const file = item.getAsFile();
                     if (file && editImages.length < MAX_IMAGES) {
@@ -309,6 +323,7 @@ export default function MemoPage() {
                             setError(err instanceof ApiError ? err.message : "이미지 업로드 실패");
                         }
                     }
+                    refocusTextarea(ta, { start: selStart, end: selEnd });
                     return;
                 }
             }

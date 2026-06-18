@@ -81,6 +81,8 @@ export default function PostListPage() {
     const [items, setItems] = useState<PostListItem[]>([]);
     const [totalElements, setTotalElements] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
+    /** 전체(cat 없음) 목록 API에서만 내려옴 */
+    const [pinnedNoticeCount, setPinnedNoticeCount] = useState<number | null>(null);
 
     const commitSearch = useCallback(
         (value: string) => {
@@ -144,6 +146,11 @@ export default function PostListPage() {
                 });
                 if (cancelled) return;
                 setItems(data.items ?? []);
+                const pn =
+                    typeof data.pinnedNoticeCount === "number" && Number.isFinite(data.pinnedNoticeCount)
+                        ? data.pinnedNoticeCount
+                        : null;
+                setPinnedNoticeCount(pn);
                 const te = data.totalElements ?? 0;
                 // 요청한 페이지 크기 기준으로 총 페이지 수 계산 (응답의 size가 행 개수 등으로 잘못 올 경우 대비)
                 const sz = sizeFromUrl > 0 ? sizeFromUrl : 10;
@@ -164,6 +171,7 @@ export default function PostListPage() {
                 setItems([]);
                 setTotalElements(0);
                 setTotalPages(0);
+                setPinnedNoticeCount(null);
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -334,9 +342,19 @@ export default function PostListPage() {
             {loading && (
                 <div style={{ marginTop: 14, opacity: 0.8 }}>불러오는 중...</div>
             )}
-            {!loading && !error && items.length > 0 && (
+            {!loading && !error && (
                 <div style={{ marginTop: 14, marginBottom: 6, fontSize: 14, opacity: 0.85 }}>
-                    총 {totalElements}개 (현재 {items.length}개 표시)
+                    {pinnedNoticeCount != null ? (
+                        <>
+                            공지사항 {pinnedNoticeCount}건 · 일반 게시글{" "}
+                            {Math.max(0, totalElements - pinnedNoticeCount)}건 · 전체 {totalElements}건 (현재{" "}
+                            {items.length}개 표시)
+                        </>
+                    ) : (
+                        <>
+                            총 {totalElements}개 (현재 {items.length}개 표시)
+                        </>
+                    )}
                 </div>
             )}
             {!loading && !error && (

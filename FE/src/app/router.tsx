@@ -10,6 +10,7 @@ import PostVersionHistoryPage from "../pages/PostVersionHistoryPage";
 import PostVersionDetailPage from "../pages/PostVersionDetailPage";
 import AssignmentPage from "../pages/AssignmentPage";
 import MemoPage from "../pages/MemoPage";
+import TssAiTestPage from "../pages/TssAiTestPage";
 import UserManagePage from "../pages/UserManagePage";
 import AssignmentGradesPage from "../pages/AssignmentGradesPage";
 import AdminContentStatsPage from "../pages/AdminContentStatsPage";
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
             { path: "posts/versions", element: <PostVersionHistoryPage /> },
             { path: "posts/:postId/versions/:versionNumber", element: <PostVersionDetailPage /> },
             { path: "memos", element: <MemoPage /> },
+            { path: "tss-ai-test", element: <TssAiTestPage /> },
             { path: "users/manage", element: <UserManagePage /> },
             { path: "admin/assignment-grades", element: <AssignmentGradesPage /> },
             { path: "admin/content-stats", element: <AdminContentStatsPage /> },

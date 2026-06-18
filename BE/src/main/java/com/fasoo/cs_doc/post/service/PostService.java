@@ -246,26 +246,17 @@ public class PostService {
         boolean useTitleDbFilter = kw != null && !kw.isBlank() && searchScope == ListSearchScope.TITLE;
         boolean isFirstPage = pageable.getPageNumber() == 0;
         
-        // 공지사항 조회 (1페이지에만, categoryId가 null일 때만 - 특정 카테고리 선택 시에는 공지사항 제외, 삭제되지 않은 것만)
+        // 전체 목록(categoryId 없음)만 1페이지 상단 고정 공지. 페이지 계산용 개수는 매 페이지 요청마다 조회(count)해야 오프셋이 어긋나지 않음.
+        boolean pinNoticesToFirstPage = categoryId == null;
+        long pinnedNoticeTotal = pinNoticesToFirstPage ? postRepository.countByIsNoticeTrueAndDeletedFalse() : 0L;
+        int pinnedSlots = (int) Math.min(pinnedNoticeTotal, Integer.MAX_VALUE);
+
         List<PostListItemResponse> noticeItems = List.of();
-        int noticeCount = 0;
-        if (isFirstPage && categoryId == null) {
+        if (isFirstPage && pinNoticesToFirstPage && pinnedSlots > 0) {
             List<Post> notices = postRepository.findByIsNoticeTrueAndDeletedFalseOrderByCreatedAtDesc();
             noticeItems = notices.stream()
                     .map(this::toListItem)
                     .toList();
-            noticeCount = noticeItems.size();
-        }
-        
-        // 1페이지인 경우 공지사항이 페이지 크기를 점유하므로 일반 글은 (페이지 크기 - 공지사항 개수)만큼만 조회
-        Pageable adjustedPageable = pageable;
-        if (isFirstPage && noticeCount > 0) {
-            int adjustedSize = Math.max(1, pageable.getPageSize() - noticeCount);
-            adjustedPageable = org.springframework.data.domain.PageRequest.of(
-                    pageable.getPageNumber(),
-                    adjustedSize,
-                    pageable.getSort()
-            );
         }
 
         Sort listSort = pageable.getSort().isSorted()
@@ -380,20 +371,20 @@ public class PostService {
         combinedItems.addAll(uniqueLegacyItems);
         combinedItems.sort((a, b) -> b.createdAt().compareTo(a.createdAt()));
         
-        log.debug("PostService.list - noticeCount={}, normalItems.size()={}, legacyItems.size()={}, categoryId={}, keyword={}", 
-                noticeCount, normalItems.size(), uniqueLegacyItems.size(), categoryId, kw);
-        
+        log.debug("PostService.list - pinnedSlots={}, normalItems.size()={}, legacyItems.size()={}, categoryId={}, keyword={}",
+                pinnedSlots, normalItems.size(), uniqueLegacyItems.size(), categoryId, kw);
+
         // 페이징 처리 (합쳐진 리스트에서 페이지 크기만큼만 가져오기. 1페이지에 공지가 있으면 그만큼 일반 글 수 감소)
         int pageSize = pageable.getPageSize();
         int start;
         int sliceSize;
-        if (isFirstPage && noticeCount > 0) {
-            sliceSize = Math.max(1, pageSize - noticeCount);
+        if (isFirstPage && pinnedSlots > 0) {
+            sliceSize = Math.max(1, pageSize - pinnedSlots);
             start = 0;
         } else {
             sliceSize = pageSize;
-            start = (noticeCount > 0)
-                    ? (pageSize - noticeCount) + (pageable.getPageNumber() - 1) * pageSize
+            start = pinnedSlots > 0
+                    ? (pageSize - pinnedSlots) + (pageable.getPageNumber() - 1) * pageSize
                     : pageable.getPageNumber() * pageSize;
         }
         int end = Math.min(start + sliceSize, combinedItems.size());
@@ -410,10 +401,12 @@ public class PostService {
             allItems = pagedItems;
         }
         
-        // 전체 개수: 공지 + 일반(combined). totalPages는 전체 기준으로 일관되게 계산
+        // 전체 개수: 상단 고정 공지 + 일반(combined). 일반 목록 쿼리에는 공지(isNotice)가 제외되어 있음
         long totalCombinedElements = combinedItems.size();
-        long totalElements = noticeCount + totalCombinedElements;
+        long totalElements = pinnedSlots + totalCombinedElements;
         int totalPages = (int) Math.ceil((double) totalElements / pageable.getPageSize());
+
+        Long pinnedNoticeMeta = pinNoticesToFirstPage ? pinnedNoticeTotal : null;
 
         return PageResponse.of(
                 allItems,
@@ -422,7 +415,8 @@ public class PostService {
                 totalElements,
                 totalPages,
                 pageable.getPageNumber() < totalPages - 1,
-                pageable.getPageNumber() > 0
+                pageable.getPageNumber() > 0,
+                pinnedNoticeMeta
         );
     }
 

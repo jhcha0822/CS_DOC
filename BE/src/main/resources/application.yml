@@ -36,3 +36,6 @@ app:
     base-dir: ${CS_DOC_BASE_DIR:${user.home}/Documents}
     md-root: ${app.storage.base-dir}/CS_DOC_DATA/md
     upload-dir: ${app.storage.base-dir}/CS_DOC_DATA/uploads
+  # TSS 에이전트 (FE는 /api/tss-agent/respond 로만 호출 → 서버에서 전달, CORS·정적서버 무관)
+  tss-agent:
+    base-url: ${TSS_AGENT_BASE_URL:http://192.168.100.114:28080}

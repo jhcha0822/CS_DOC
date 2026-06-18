@@ -10,4 +10,11 @@ export default defineConfig({
       "/uploads": "http://localhost:8080",
     },
   },
+  /** `vite preview`: /api·/uploads → 로컬 BE (TSS는 BE가 프록시) */
+  preview: {
+    proxy: {
+      "/api": "http://localhost:8080",
+      "/uploads": "http://localhost:8080",
+    },
+  },
 });
